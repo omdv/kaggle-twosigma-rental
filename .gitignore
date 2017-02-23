@@ -1,0 +1,8 @@
+*.pyc
+*.csv
+*.json
+*.pickled
+input/
+output/
+.DS_Store
+.ipynb_checkpoints/
