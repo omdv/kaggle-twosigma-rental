@@ -46,6 +46,10 @@ CV | LB | comments
 0.541679 | 0.54353 | switched back to my code, same as best cv with old code, 0.374612 test with 999 trees, starter-03 gives 0.375619 of train error and 0.54316 on LB
 0.353673, my code CV: 0.541679, LB: 0.54353
 
+### Simple
+0.545684 | 0.54778 | baseline
+
+
 ### Debugging a difference between starter-03 and my code
 starter-03:
 no-sparse, 999, train error 0.384395

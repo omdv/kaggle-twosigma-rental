@@ -215,7 +215,7 @@ def get_features(train, test):
         "target"]
     features = [x for x in features if x not in toremove]
 
-    features_to_use=["bathrooms","bedrooms","latitude","longitude", "price"]
+    features_to_use=["bathrooms","bedrooms","lat_fixed","lon_fixed", "price"]
     features_to_use.extend([\
     "num_photos", "num_features","num_description_words",\
     "created_month", "created_day","created_hour",\
