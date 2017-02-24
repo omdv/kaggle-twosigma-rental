@@ -43,8 +43,8 @@ CV | LB | comments
 
 0.539575 |         | ['bathrooms', 'bedrooms', 'lat_fixed', 'lon_fixed', 'price', 'price_t', 'num_photos', 'num_features', 'num_description_words', 'created_day', 'created_hour', 'price_t1', 'listing_id', 'listings_by_building', 'listings_by_manager', 'listings_by_address', 'price_by_building', 'price_by_manager', 'price_by_address', 'img_brg_mean', 'img_hgt_mean', 'img_sat_mean', 'img_wdt_mean', 'compound', 'pos', 'neu', 'neg', 'locations_kde', 'display_address', 'manager_id', 'building_id', 'street_address']
 
-0.540976 | 0.55266 | switched back to my code, same as best cv with old code, 0.343406 test with 999 trees, starter-03 gives 0.375619 of train error and 0.54316 on LB
-0.353673
+0.541679 | 0.54353 | switched back to my code, same as best cv with old code, 0.374612 test with 999 trees, starter-03 gives 0.375619 of train error and 0.54316 on LB
+0.353673, my code CV: 0.541679, LB: 0.54353
 
 ### Debugging a difference between starter-03 and my code
 starter-03:

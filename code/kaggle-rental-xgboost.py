@@ -353,9 +353,9 @@ def create_submission(score, pred, model, importance):
 
 if __name__ == '__main__':
     # setup
-    ifSparse = False
+    ifSparse = True
     ifPickled = False
-    ifValid = False
+    ifValid = True
     valsize = 25
     target = ['target']
 
@@ -388,4 +388,4 @@ if __name__ == '__main__':
     out_df = pd.DataFrame(prediction)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test.listing_id.values
-    # create_submission(score, out_df, model, importance)
+    #create_submission(score, out_df, model, importance)
