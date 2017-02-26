@@ -351,6 +351,38 @@ def create_submission(score, pred, model, importance):
     print('Writing submission: ', sub_file)
     pred.to_csv(sub_file, index=False)
 
+# function to create X, y, X_submisison
+def load_data():
+    # setup
+    ifSparse = True
+    ifPickled = True
+    ifValid = False
+    valsize = 25
+    target = ['target']
+    train, test, valid = read_test_train(ifValid,valsize)
+    train, test, valid = derive_features(ifPickled,ifValid,train,test,valid)
+
+    features = get_features(train, test)
+
+    print('Shape of train: {}'.format(train[features].shape))
+    print('Shape of test: {}'.format(test[features].shape))
+    if ifValid:
+        print('Shape of valid: {}'.format(valid[features].shape))
+    print('Regular features: {}'.format(len(features)))
+
+    ytrain = train[target]
+    yvalid = valid[target] if ifValid else 0
+
+    if ifSparse:
+        dtrain, dtest, dvalid =\
+            add_sparse_features(train,test,valid,features,ifValid)
+    else:
+        dtrain = train[features]
+        dtest = test[features]
+        dvalid = [valid[features] if ifValid else 0]
+    
+    return dtrain, y_train, dtest
+
 if __name__ == '__main__':
     # setup
     ifSparse = True

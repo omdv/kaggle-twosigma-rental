@@ -10,6 +10,14 @@ from sklearn.metrics import log_loss
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 import math
 
+def get_importance(gbm):
+    """
+    Getting relative feature importance
+    """
+    importance = pd.Series(gbm.get_fscore()).sort_values(ascending=False)
+    importance = importance/1.e-2/importance.values.sum()
+    return importance
+
 def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None, seed_val=0, num_rounds=1000):
     param = {}
     param['objective'] = 'multi:softprob'
@@ -33,7 +41,8 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None, seed_val=0
         model = xgb.train(plst, xgtrain, num_rounds, watchlist, early_stopping_rounds=50)
     else:
         xgtest = xgb.DMatrix(test_X)
-        model = xgb.train(plst, xgtrain, num_rounds)
+        watchlist = [ (xgtrain,'train') ]
+        model = xgb.train(plst, xgtrain, num_rounds, watchlist)
 
     pred_test_y = model.predict(xgtest)
     return pred_test_y, model
@@ -46,7 +55,7 @@ test_df = pd.read_json(test_file)
 print(train_df.shape)
 print(test_df.shape)
 
-features_to_use  = ["bathrooms", "bedrooms", "latitude", "longitude", "price"]
+features_to_use  = ["bathrooms", "bedrooms", "lat_fixed", "lon_fixed", "price"]
 
 # transformation of lat and lng #
 train_df["price_t"] = train_df["price"]/train_df["bedrooms"] 
@@ -92,14 +101,73 @@ train_df["created_hour"] = train_df["created"].dt.hour
 test_df["created_hour"] = test_df["created"].dt.hour
 
 
+joint = pd.concat([train_df,test_df])
+
+# --- Add coordinates
+coords = pd.read_csv('../input/coordinates_clusters.csv')
+joint = pd.merge(joint,coords,how='left',on='listing_id')
+joint['locations_kde'] = np.exp(joint.locations_kde)
+
+# --- Add listings by address, building, manager
+for f in [
+    'manager_id','building_id','display_address','street_address',\
+    'num_photos','num_description_words','num_features','0.2km']:
+    by_count = \
+        joint[['price',f]].groupby(f).count().reset_index()
+    by_count.columns = [f,'listings_by_'+f]
+    joint = pd.merge(joint,by_count,how='left',on=f)
+
+# --- Adding mean price
+for f in [
+    'manager_id','building_id','display_address','street_address',\
+    'num_photos','num_description_words','num_features','0.2km']:
+    by_price = \
+        joint[['price',f]].groupby(f).mean().reset_index()
+    by_price.columns = [f,'price_by_'+f]
+    joint = pd.merge(joint,by_price,how='left',on=f)
+
+
+
+# --- Split back
+train_df = joint[joint.interest_level.notnull()]
+test_df = joint[joint.interest_level.isnull()]
+
 # Add the number of exclamation signs:
 #train_df['num_exclamations'] = train_df['description'].apply(lambda x: len(x.split('!')))
 #test_df['num_exclamations'] = test_df['description'].apply(lambda x: len(x.split('!')))
 
 # adding all these new features to use list #
-features_to_use.extend(["price_t","num_photos", "num_features", "num_description_words", 
-                        "created_year", "created_month", "created_day", "created_hour",
-                        "listing_id",'room_dif','room_sum','price_t1'])
+features_to_use.extend([
+    "price_t",
+    "num_photos",
+    "num_features",
+    "num_description_words",
+    "created_day",
+    "created_hour",
+    "created_month",
+    "listing_id",
+    'room_dif',
+    'room_sum',
+    'price_t1'])
+
+features_to_use.extend([
+    'listings_by_manager_id',
+    'listings_by_building_id',
+    'listings_by_display_address',
+    'listings_by_street_address',
+    # 'listings_by_num_photos',
+    # 'listings_by_num_features',
+    # 'listings_by_num_description_words',
+    'price_by_display_address',
+    'price_by_manager_id',
+    'price_by_building_id',
+    # 'price_by_num_photos',
+    # 'price_by_num_features',
+    # 'price_by_num_description_words'
+    "0.2km",
+    'listings_by_0.2km',
+    'price_by_0.2km'
+    ])
                         
 categorical = ["display_address", "manager_id", "building_id", "street_address"]
 for f in categorical:
@@ -135,10 +203,10 @@ tr_sparse2 = tfidf.fit_transform(train_df["street_address"])
 te_sparse2 = tfidf.transform(test_df["street_address"])
 '''
 
-
-
 train_X = sparse.hstack([train_df[features_to_use], tr_sparse]).tocsr()
 test_X = sparse.hstack([test_df[features_to_use], te_sparse]).tocsr()
+# train_X = train_df[features_to_use]
+# test_X = test_df[features_to_use]
 
 target_num_map = {'high':0, 'medium':1, 'low':2}
 train_y = np.array(train_df['interest_level'].apply(lambda x: target_num_map[x]))
@@ -148,6 +216,8 @@ cv_scores = []
 kf = model_selection.KFold(n_splits=5, shuffle=True, random_state=2016)
 for dev_index, val_index in kf.split(range(train_X.shape[0])):
         dev_X, val_X = train_X[dev_index,:], train_X[val_index,:]
+        # dev_X, val_X = train_X.iloc[dev_index], train_X.iloc[val_index]
+
         dev_y, val_y = train_y[dev_index], train_y[val_index]
         preds, model = runXGB(dev_X, dev_y, val_X, val_y)
         cv_scores.append(log_loss(val_y, preds))
