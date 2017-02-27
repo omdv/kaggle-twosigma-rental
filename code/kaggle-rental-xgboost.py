@@ -250,6 +250,13 @@ def add_sparse_features(train,test,valid,features,ifValid):
     else:
         dvalid = 0
 
+    if not ifValid:
+        # mix with blended
+        blended_train = np.loadtxt("blended_train.csv",delimiter=',')
+        blended_test = np.loadtxt("blended_test.csv",delimiter=',')
+        dtrain = sparse.hstack([dtrain,blended_train]).tocsr()
+        dtest = sparse.hstack([dtest,blended_test]).tocsr()
+
     return dtrain, dtest, dvalid
 
 # --------------------------------------------------------#
@@ -387,7 +394,7 @@ if __name__ == '__main__':
     # setup
     ifSparse = True
     ifPickled = False
-    ifValid = True
+    ifValid = False
     valsize = 25
     target = ['target']
 

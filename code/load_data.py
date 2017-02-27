@@ -77,12 +77,15 @@ def derive_features(train,test):
     joint['lon_scaled'] = scaler.fit_transform(joint.lon_fixed.reshape(-1,1))
 
     # --- Get conventional features
-    joint["price_t"] = joint["price"]/joint["bedrooms"]
-    joint.loc[joint.bedrooms == 0,"price_t"] = joint["price"]
-
     joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
     joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
+
+    joint["price_t"] = joint["price"]/joint["bedrooms"]
+    joint.loc[joint.bedrooms == 0,"price_t"] = joint["price"]
+    
     joint["price_t1"] = joint["price"]/joint["room_sum"]
+    joint.loc[joint.room_sum == 0,"price_t1"] = joint["price"]
+
     joint["fold_t1"] = joint["bedrooms"]/joint["room_sum"]
     joint["num_photos"] = joint["photos"].apply(len)
     joint["num_features"] = joint["features"].apply(len)

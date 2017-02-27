@@ -22,8 +22,13 @@ if __name__ == '__main__':
 
     X, y, X_submission = load_data.load(ifSparse)
     y = y.values.reshape(1,-1)[0]
-    X = X.values
-    X_submission = X_submission.values
+    # X = X.values
+    # X_submission = X_submission.values
+
+    for i in X:
+        if X[i].dtype == 'float64':
+            X[i] = X[i].astype('float32')
+            X_submission[i] = X_submission[i].astype('float32')
 
     if shuffle:
         idx = np.random.permutation(y.size)
@@ -53,9 +58,9 @@ if __name__ == '__main__':
         dataset_blend_test_j = np.zeros((X_submission.shape[0], len(skf)))
         for i, (train, test) in enumerate(skf):
             print "Fold", i
-            X_train = X[train]
+            X_train = X.loc[train,:]
             y_train = y[train]
-            X_test = X[test]
+            X_test = X.loc[test,:]
             y_test = y[test]
             clf.fit(X_train, y_train)
             y_submission = clf.predict_proba(X_test)[:, 1]
