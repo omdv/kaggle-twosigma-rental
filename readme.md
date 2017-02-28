@@ -20,7 +20,7 @@ CV | LB | comments
 0.548053 |         | starter-03 with image and weekday, 973 iters
 0.554330 |         | starter-03 removed bottom 8, 800 iters
 0.547408 |         | starter-03 with dist from center, 784iters
-0.545684 | 0.54850 | starter-03, 758 iters based on best CV
+0.545684 | 0.54850 | starter-03, 758 iters based on best CV, worse than 1000
 0.545523 |         | starter-03, eta 0.05, 1601 trees
 0.543843 | 0.54998 | starter-03, eta 0.1, 1000 iters, with image height
 0.543843 | 0.54933 | starter-03, eta 0.1, 1131 iters with image height
@@ -46,9 +46,29 @@ CV | LB | comments
 0.541679 | 0.54353 | switched back to my code, same as best cv with old code, 0.374612 test with 999 trees, starter-03 gives 0.375619 of train error and 0.54316 on LB
 0.353673, my code CV: 0.541679, LB: 0.54353
 
-### Simple
-0.545684 | 0.54778 | baseline
+### Blended
+Train: 0.363988, LB: 0.54474
 
+### Simple
+CV 0.545684, baseline, LB 0.54778
+CV 0.537953, added count of listings by mngr, bld, display_address
+CV 0.536446, added price by mngr, bld, display_address, 702 trees
+CV 0.536156, removed created_year, 775 trees
+CV 0.536945, removed created_month, 716 trees
+CV 0.536587, returned month, removed room_dif
+CV 0.535576, added listings by street_address, CV 841 ***BEST*** (KEEP)
+CV 0.537865, added price by street_address (REMOVE)
+CV 0.536756, added listings by num_XXX. (REMOVE)
+CV 0.537026, added price by num_XXX. (REMOVE)
+CV 0.537855, switched to fixed coordinates, 835 trees (KEEP??)
+CV 0.537940, added locations_KDE, 682 (REMOVE)
+CV 0.537581, added 0.2km clusters (KEEP?)
+CV 0.535949, added listings and price by 0.2km cluster (KEEP?)
+
+### Manager skill
+Added manager skill with potential leak of interest levels??
+Train score is 0.339021 on 999 trees, may be used in ensemle?
+LB: 0.63987
 
 ### Debugging a difference between starter-03 and my code
 starter-03:
