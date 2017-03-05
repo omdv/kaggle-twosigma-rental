@@ -192,6 +192,7 @@ joint['proc_features'] =\
 
 train_df = joint[joint.interest_level.notnull()]
 test_df = joint[joint.interest_level.isnull()]
+joint = 0
 
 
 tfidf = CountVectorizer(stop_words='english', max_features=400)
