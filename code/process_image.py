@@ -152,7 +152,7 @@ def get_all_exif(row):
     with ExifTool() as e:
         try:
             metadata = e.get_metadata(*filenames)
-            return pd.DataFrame(metadata)
+            return metadata
         except:
             pass
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
     train = pd.read_json('../input/train.json')
     test = pd.read_json('../input/test.json')
     df = pd.concat([train,test])
-    df = df.sample(5000)
+    # df = df.sample(100)
 
     images = [int(x) for x in check_output(["ls", "../input/images_sample"]).\
         decode("utf8").strip().split('\n')]
@@ -183,5 +183,33 @@ if __name__ == '__main__':
     df = df.drop('photo_files', axis=1).join(filenames)
 
     res = get_all_exif(df['photo_files'])
-    res['listing_id'] = res.SourceFile.str.extract('([0-9]+)')
-    # df = pd.merge(df,res,how='left',on='listing_id')
+    # res['listing_id'] = res.SourceFile.str.extract('([0-9]+)')
+
+    # # Select features
+    # counts = []
+    # for f in res.columns:
+    #     try:
+    #         count = len(res[f].unique())
+    #         total = len(res[f])
+    #         nonnil = len(res[res[f].notnull()])
+    #     except:
+    #         pass
+    #     counts.append({'feature':f, 'unique': count, 'nonnil' : nonnil})
+    # df = pd.DataFrame(counts)
+
+    # features_to_use = df[(df.nonnil>np.percentile(df.nonnil,75)) &\
+    #     (df.unique < df.unique.max()) &\
+    #     (df.unique > np.percentile(df.unique,90))].\
+    #     sort_values(by='unique',ascending=False)['feature'].values.tolist()
+
+
+    # features_to_use.remove('listing_id')
+    # features_to_use.remove('File:Directory')
+
+    # cor = res[features_to_use].corr()
+    # cor.loc[:,:] = np.tril(cor,k=-1)
+    # cor = cor.stack()
+    # kk = cor[cor>0.9999]
+
+    # for f in kk.unstack().columns:
+    #     features_to_use.remove(f)

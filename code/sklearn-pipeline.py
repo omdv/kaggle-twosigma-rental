@@ -18,13 +18,47 @@ from sklearn.model_selection import train_test_split
 
 np.random.seed(42)
 
-class Debugger(BaseEstimator, TransformerMixin):
-  def fit(self, x, y=None):
-    return self
+class ManagerSkill(BaseEstimator, TransformerMixin):
 
-  def transform(self, X):
-    print X.shape
-    return X
+    def __init__(self, threshold = 5):
+        self.threshold = threshold
+        
+    def _reset(self):
+        if hasattr(self, 'mapping_'):
+            self.mapping_ = {}
+            self.mean_skill_ = 0.0
+        
+    def fit(self,X,y):
+        self._reset()
+        temp = pd.concat([X.manager_id,pd.get_dummies(y)], axis = 1).\
+            groupby('manager_id').mean()
+        temp.rename(columns=\
+            {0: 'high_frac', 1: 'medium_frac', 2: 'low_frac'},\
+            inplace=True)
+
+        print(X.shape)
+        temp['count'] = X.groupby('manager_id').count().iloc[:,1]
+        temp['manager_skill'] = temp['high_frac']*2 + temp['medium_frac']
+        mean = temp.loc[temp['count'] >= self.threshold, 'manager_skill'].mean()
+        temp.loc[temp['count'] < self.threshold, 'manager_skill'] = mean
+        
+        self.mapping_ = temp[['manager_skill']]
+        self.mean_skill_ = mean
+        return self
+        
+    def transform(self, X):
+        X = pd.merge(left = X,right = self.mapping_,how = 'left',\
+            left_on = 'manager_id',right_index = True)
+        X['manager_skill'].fillna(self.mean_skill_, inplace = True)
+        return X[['manager_skill']]
+
+class Debugger(BaseEstimator, TransformerMixin):
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X):
+        print X.shape
+        return X
 
 class ColumnExtractor(BaseEstimator, TransformerMixin):
     def __init__(self, fields):
@@ -188,7 +222,7 @@ Define features
 
 # define non-pipeline features
 features = [
-    "listing_id",\
+    # "listing_id",\
     "bathrooms", "bedrooms", "latitude", "longitude", "price",\
     "price_t",'price_t1',\
     "num_photos", "num_features","num_description_words",\
@@ -204,14 +238,18 @@ joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
 # Split back
 train_df = joint[joint.interest_level.notnull()]
 test_df = joint[joint.interest_level.isnull()]
-# joint = 0
+joint = 0
 
-
-# --- Define X and y
+'''
+===============================
+Define X & y
+===============================
+'''
 target_num_map = {'high':0, 'medium':1, 'low':2}
 y = np.array(train_df['interest_level'].apply(lambda x: target_num_map[x]))
 X = train_df
 X_test = test_df
+
 
 '''
 ===============================
@@ -223,6 +261,7 @@ Define Pipeline
 CONTINUOUS_FIELDS = features
 FACTOR_FIELDS = categorical
 TEXT_FIELDS = ["features"]
+TARGET_AVERAGING_FIELDS = ["manager_id", "price"]
 
 pipeline = Pipeline([
     ('features', FeatureUnion([
@@ -230,6 +269,11 @@ pipeline = Pipeline([
             ('get', ColumnExtractor(CONTINUOUS_FIELDS)),
             ('debugger', Debugger())
         ])),
+        # ('averages', Pipeline([
+        #     ('get', ColumnExtractor(TARGET_AVERAGING_FIELDS)),
+        #     ('transform', ManagerSkill(threshold = 5)),
+        #     ('debugger', Debugger())
+        # ])),
         ('factors', Pipeline([
             ('get', ColumnExtractor(FACTOR_FIELDS)),
             ('onehot', OneHotEncoder(handle_unknown='ignore')),
@@ -249,7 +293,7 @@ pipeline = Pipeline([
 XGboost Cycle
 ===============================
 '''
-Validation = False
+Validation = True
 
 if Validation:
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
