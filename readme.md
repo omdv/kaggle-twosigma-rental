@@ -46,8 +46,7 @@
 [680] test-mlogloss:0.53842 - added price by ...
 [609] test-mlogloss:0.538005 - added skill (th=10)
 [652] test-mlogloss:0.53716 - added skill (th=5)
-[999] test-mlogloss:0.534338 without skill and with onehotencoding ***BEST***
-[933] test-mlogloss:0.533139 same as above (X_shape = 28677)
+[933] test-mlogloss:0.533139 no skill and w/onehote (X_shape = 28677) ***BEST***
 [933] test-mlogloss:0.538572 added manager_skill
 
 ### Manager skill
