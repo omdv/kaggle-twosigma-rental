@@ -1,5 +1,4 @@
 ### Submission history
-CV | LB | comments
 0.567000 | 0.57412 | no description, 200 features countVectorizer for features
 0.566670 | 0.57347 | with description 200 features
 0.551920 |         | with categorical, descripion, features and weekday
@@ -41,70 +40,23 @@ CV | LB | comments
 0.536312 |         | fixed lat/long, locs kde, gauss 5e-3, 830 iters
 0.536765 | 0.54249 | scaled lat/long, locs kde, gauss 5e-3
 
-0.539575 |         | ['bathrooms', 'bedrooms', 'lat_fixed', 'lon_fixed', 'price', 'price_t', 'num_photos', 'num_features', 'num_description_words', 'created_day', 'created_hour', 'price_t1', 'listing_id', 'listings_by_building', 'listings_by_manager', 'listings_by_address', 'price_by_building', 'price_by_manager', 'price_by_address', 'img_brg_mean', 'img_hgt_mean', 'img_sat_mean', 'img_wdt_mean', 'compound', 'pos', 'neu', 'neg', 'locations_kde', 'display_address', 'manager_id', 'building_id', 'street_address']
-
-0.541679 | 0.54353 | switched back to my code, same as best cv with old code, 0.374612 test with 999 trees, starter-03 gives 0.375619 of train error and 0.54316 on LB
-0.353673, my code CV: 0.541679, LB: 0.54353
-
-### Blended
-Train: 0.363988, LB: 0.54474
-
-### Simple
-CV 0.545684, baseline, LB 0.54778
-CV 0.537953, added count of listings by mngr, bld, display_address
-CV 0.536446, added price by mngr, bld, display_address, 702 trees
-CV 0.536156, removed created_year, 775 trees
-CV 0.536945, removed created_month, 716 trees
-CV 0.536587, returned month, removed room_dif
-CV 0.535576, added listings by street_address, CV 841 ***BEST*** (KEEP)
-CV 0.537865, added price by street_address (REMOVE)
-CV 0.536756, added listings by num_XXX. (REMOVE)
-CV 0.537026, added price by num_XXX. (REMOVE)
-CV 0.537855, switched to fixed coordinates, 835 trees (KEEP??)
-CV 0.537940, added locations_KDE, 682 (REMOVE)
-CV 0.537581, added 0.2km clusters (KEEP?)
-CV 0.535949, added listings and price by 0.2km cluster (KEEP?)
+### Pipelines version (0.33 CV)
+[748] test-mlogloss:0.547256 - baseline xgboost-starter-03
+[629] test-mlogloss:0.541889 - added number of listings
+[680] test-mlogloss:0.53842 - added price by ...
+[609] test-mlogloss:0.538005 - added skill (th=10)
+[652] test-mlogloss:0.53716 - added skill (th=5)
+[999] test-mlogloss:0.534338 without skill and with onehotencoding ***BEST***
+[933] test-mlogloss:0.533139 same as above (X_shape = 28677)
+[933] test-mlogloss:0.538572 added manager_skill
 
 ### Manager skill
-Added manager skill with potential leak of interest levels??
-Train score is 0.339021 on 999 trees, may be used in ensemle?
-LB: 0.63987
-
-### Debugging a difference between starter-03 and my code
-starter-03:
-no-sparse, 999, train error 0.384395
-sparse, 999, train error 0.375619
-
-no-sparse features
-listing_id               7.766921
-manager_id               6.930740
-latitude                 6.522207
-price                    6.431421
-longitude                5.729030
-price_by_manager         5.492510
-num_description_words    5.227322
-street_address           5.146093
-price_t1                 5.126980
-listings_by_manager      5.074420
-display_address          4.993191
-building_id              4.501039
-price_by_address         4.183291
-price_by_building        4.130731
-price_t                  3.583630
-listings_by_address      3.122536
-num_features             2.943355
-created_day              2.866904
-listings_by_building     2.811955
-created_hour             2.811955
-num_photos               2.391476
-bathrooms                0.611606
-bedrooms                 0.468261
-room_dif                 0.434814
-room_sum                 0.387032
-created_month            0.310581
-
-my:
-no-sparse, 999, 0.384658 
+No sparse:
+[699]	train-mlogloss:0.385271	test-mlogloss:0.55151 - with manager skill
+[693]	train-mlogloss:0.390048	test-mlogloss:0.551195 - without manager skill
+Sparse:
+[652]	train-mlogloss:0.382129	test-mlogloss:0.53716 - with manager skill
+[680]	train-mlogloss:0.378572	test-mlogloss:0.53842 - without manager skill
 
 ### Cross-validation
 CV | Iter | Size
