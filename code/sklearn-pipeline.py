@@ -19,7 +19,6 @@ from sklearn.model_selection import train_test_split
 np.random.seed(42)
 
 class ManagerSkill(BaseEstimator, TransformerMixin):
-
     def __init__(self, threshold = 5):
         self.threshold = threshold
         
@@ -36,8 +35,7 @@ class ManagerSkill(BaseEstimator, TransformerMixin):
             {0: 'high_frac', 1: 'medium_frac', 2: 'low_frac'},\
             inplace=True)
 
-        print(X.shape)
-        temp['count'] = X.groupby('manager_id').count().iloc[:,1]
+        temp['count'] = X.groupby('manager_id').count().iloc[:,0]
         temp['manager_skill'] = temp['high_frac']*2 + temp['medium_frac']
         mean = temp.loc[temp['count'] >= self.threshold, 'manager_skill'].mean()
         temp.loc[temp['count'] < self.threshold, 'manager_skill'] = mean
@@ -112,7 +110,7 @@ def create_submission(score, pred, model, importance):
 
 def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
     seed_val=0,
-    num_rounds=1000):
+    num_rounds=2000):
     param = {}
     param['objective'] = 'multi:softprob'
     param['eta'] = 0.1
@@ -165,7 +163,8 @@ joint["num_description_words"] =\
 
 # convert the created column to datetime object so as to extract more features 
 joint["created"] = pd.to_datetime(joint["created"])
-joint["passed"] = joint["created"].max() - joint["created"]
+joint["passed"] = joint["created"] - joint["created"].min()
+joint["passed_days"] = joint.passed.dt.days
 joint["created_year"] = joint["created"].dt.year
 joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
@@ -214,6 +213,30 @@ joint['features'] =\
     joint["features"].apply(lambda x:\
     " ".join(["_".join(i.split(" ")) for i in x]))
 
+# Process districts
+ds = joint.description
+joint['isManhattan'] = ds.str.lower().str.contains('manhattan')
+joint['isCentralPark'] = ds.str.lower().str.contains('central park')
+joint['isBroadway'] = ds.str.lower().str.contains('broadway')
+joint['isSoho'] = ds.str.lower().str.contains('soho')
+joint['isMidtown'] = ds.str.lower().str.contains('midtown')
+joint['isChelsea'] = ds.str.lower().str.contains('chelsea')
+joint['isHarlem'] = ds.str.lower().str.contains('harlem')
+joint['isChinatown'] = ds.str.lower().str.contains('chinatown')
+joint['isTribeca'] = ds.str.lower().str.contains('tribeca')
+joint['isLittleItaly'] = ds.str.lower().str.contains('little italy')
+joint['isFlatiron'] = ds.str.lower().str.contains('flatiron')
+joint['isGreenwich'] = ds.str.lower().str.contains('greenwich')
+joint['isBrooklyn'] = ds.str.lower().str.contains('brooklyn')
+joint['isHeights'] = ds.str.lower().str.contains('heights')
+joint['isGramercy'] = ds.str.lower().str.contains('gramercy')
+joint['isMurrayHill'] = ds.str.lower().str.contains('murray hill')
+joint['isFinancialDist'] = ds.str.lower().str.contains('financial district')
+joint['isNolita'] = ds.str.lower().str.contains('nolita')
+joint['isDumbo'] = ds.str.lower().str.contains('dumbo')
+joint['isBatteryPark'] = ds.str.lower().str.contains('battery park')
+ds = 0
+
 '''
 ===============================
 Define features
@@ -221,24 +244,31 @@ Define features
 '''
 
 # define non-pipeline features
-features = [
-    # "listing_id",\
+features = [\
+    "listing_id",\
     "bathrooms", "bedrooms", "latitude", "longitude", "price",\
-    "price_t",'price_t1',\
+    "price_t","price_t1",\
     "num_photos", "num_features","num_description_words",\
     "created_month", "created_day","created_hour",\
+    "passed_days",\
     "room_dif","room_sum",\
     "listings_by_building","listings_by_manager","listings_by_address",\
-    "price_by_building","price_by_manager","price_by_address"]
+    "price_by_building","price_by_manager","price_by_address",\
+    ]
 
 # LabelEncoder for OneHotEncoder to work
-categorical = ["display_address", "manager_id", "building_id", "street_address"]
+categorical = [\
+    "display_address", "manager_id", "building_id", "street_address",\
+    # "isManhattan","isCentralPark","isBroadway","isSoho","isMidtown",\
+    # "isChelsea","isHarlem","isChinatown","isTribeca","isLittleItaly",\
+    # "isFlatiron","isGreenwich","isBrooklyn","isHeights","isGramercy",\
+    # "isMurrayHill","isFinancialDist","isNolita","isDumbo","isBatteryPark"
+    ]
 joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
 
 # Split back
 train_df = joint[joint.interest_level.notnull()]
 test_df = joint[joint.interest_level.isnull()]
-joint = 0
 
 '''
 ===============================
@@ -249,7 +279,6 @@ target_num_map = {'high':0, 'medium':1, 'low':2}
 y = np.array(train_df['interest_level'].apply(lambda x: target_num_map[x]))
 X = train_df
 X_test = test_df
-
 
 '''
 ===============================
@@ -271,7 +300,7 @@ pipeline = Pipeline([
         ])),
         # ('averages', Pipeline([
         #     ('get', ColumnExtractor(TARGET_AVERAGING_FIELDS)),
-        #     ('transform', ManagerSkill(threshold = 5)),
+        #     ('transform', ManagerSkill(threshold = 13)),
         #     ('debugger', Debugger())
         # ])),
         ('factors', Pipeline([

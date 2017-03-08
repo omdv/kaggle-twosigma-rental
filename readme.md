@@ -46,16 +46,22 @@
 [680] test-mlogloss:0.53842 - added price by ...
 [609] test-mlogloss:0.538005 - added skill (th=10)
 [652] test-mlogloss:0.53716 - added skill (th=5)
-[933] test-mlogloss:0.533139 no skill and w/onehote (X_shape = 28677) ***BEST***
-[933] test-mlogloss:0.538572 added manager_skill
+[933] test-mlogloss:0.533139 no skill and w/onehot (X_shape = 28677) ***BEST***
+#### With Manager Skill
+[925] test-mlogloss:0.534963 with skill (to=5)
+[925] test-mlogloss:0.534661 with skill (to=10)
+[949] test-mlogloss:0.535035 with skill (to=13,75centile)
+#### No Manager Skill
+[1133] test-mlogloss:0.536042 with createdby onehotencoded
+[923] test-mlogloss:0.534524 added passed days
+[1251] test-mlogloss:0.534307 added 20 neighbourhoods from description
+[1058] test-mlogloss:0.534832 added only 4 neighbourhoods
 
-### Manager skill
-No sparse:
-[699]	train-mlogloss:0.385271	test-mlogloss:0.55151 - with manager skill
-[693]	train-mlogloss:0.390048	test-mlogloss:0.551195 - without manager skill
-Sparse:
-[652]	train-mlogloss:0.382129	test-mlogloss:0.53716 - with manager skill
-[680]	train-mlogloss:0.378572	test-mlogloss:0.53842 - without manager skill
+### Manager Skill Optimizations
+- Changed mean for all values - no improvement
+- Skill = 3*High + Medium - no improvement
+
+
 
 ### Cross-validation
 CV | Iter | Size
