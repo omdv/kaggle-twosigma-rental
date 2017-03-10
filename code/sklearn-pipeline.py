@@ -13,7 +13,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.pipeline import Pipeline,FeatureUnion
 from sklearn.base import BaseEstimator
 from sklearn.base import TransformerMixin
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 np.random.seed(42)
@@ -150,8 +150,13 @@ print(test_df.shape)
 
 joint = pd.concat([train_df,test_df])
 
+# removing outliers
+price_cut = 50000
+joint.loc[joint.price>price_cut,'price'] =\
+    joint[joint.price<price_cut].price.mean()
+
 # transformation of lat and lng #
-joint["price_t"] = joint["price"]/joint["bedrooms"] 
+joint["price_t"] = joint["price"]/joint["bedrooms"]
 joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
 joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
 joint["price_t1"] = joint["price"]/joint["room_sum"]
@@ -169,6 +174,10 @@ joint["created_year"] = joint["created"].dt.year
 joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
+
+# cleaning infinities
+# joint.loc[~np.isfinite(joint.price_t1),"price_t1"] = joint["price_t1"].median()
+# joint.loc[~np.isfinite(joint.price_t),"price_t"] = joint["price_t"].median()
 
 # --- Adding counts
 by_manager = \
@@ -213,29 +222,29 @@ joint['features'] =\
     joint["features"].apply(lambda x:\
     " ".join(["_".join(i.split(" ")) for i in x]))
 
-# Process districts
-ds = joint.description
-joint['isManhattan'] = ds.str.lower().str.contains('manhattan')
-joint['isCentralPark'] = ds.str.lower().str.contains('central park')
-joint['isBroadway'] = ds.str.lower().str.contains('broadway')
-joint['isSoho'] = ds.str.lower().str.contains('soho')
-joint['isMidtown'] = ds.str.lower().str.contains('midtown')
-joint['isChelsea'] = ds.str.lower().str.contains('chelsea')
-joint['isHarlem'] = ds.str.lower().str.contains('harlem')
-joint['isChinatown'] = ds.str.lower().str.contains('chinatown')
-joint['isTribeca'] = ds.str.lower().str.contains('tribeca')
-joint['isLittleItaly'] = ds.str.lower().str.contains('little italy')
-joint['isFlatiron'] = ds.str.lower().str.contains('flatiron')
-joint['isGreenwich'] = ds.str.lower().str.contains('greenwich')
-joint['isBrooklyn'] = ds.str.lower().str.contains('brooklyn')
-joint['isHeights'] = ds.str.lower().str.contains('heights')
-joint['isGramercy'] = ds.str.lower().str.contains('gramercy')
-joint['isMurrayHill'] = ds.str.lower().str.contains('murray hill')
-joint['isFinancialDist'] = ds.str.lower().str.contains('financial district')
-joint['isNolita'] = ds.str.lower().str.contains('nolita')
-joint['isDumbo'] = ds.str.lower().str.contains('dumbo')
-joint['isBatteryPark'] = ds.str.lower().str.contains('battery park')
-ds = 0
+# # Process districts
+# ds = joint.description
+# joint['isManhattan'] = ds.str.lower().str.contains('manhattan')
+# joint['isCentralPark'] = ds.str.lower().str.contains('central park')
+# joint['isBroadway'] = ds.str.lower().str.contains('broadway')
+# joint['isSoho'] = ds.str.lower().str.contains('soho')
+# joint['isMidtown'] = ds.str.lower().str.contains('midtown')
+# joint['isChelsea'] = ds.str.lower().str.contains('chelsea')
+# joint['isHarlem'] = ds.str.lower().str.contains('harlem')
+# joint['isChinatown'] = ds.str.lower().str.contains('chinatown')
+# joint['isTribeca'] = ds.str.lower().str.contains('tribeca')
+# joint['isLittleItaly'] = ds.str.lower().str.contains('little italy')
+# joint['isFlatiron'] = ds.str.lower().str.contains('flatiron')
+# joint['isGreenwich'] = ds.str.lower().str.contains('greenwich')
+# joint['isBrooklyn'] = ds.str.lower().str.contains('brooklyn')
+# joint['isHeights'] = ds.str.lower().str.contains('heights')
+# joint['isGramercy'] = ds.str.lower().str.contains('gramercy')
+# joint['isMurrayHill'] = ds.str.lower().str.contains('murray hill')
+# joint['isFinancialDist'] = ds.str.lower().str.contains('financial district')
+# joint['isNolita'] = ds.str.lower().str.contains('nolita')
+# joint['isDumbo'] = ds.str.lower().str.contains('dumbo')
+# joint['isBatteryPark'] = ds.str.lower().str.contains('battery park')
+# ds = 0
 
 '''
 ===============================
@@ -296,6 +305,7 @@ pipeline = Pipeline([
     ('features', FeatureUnion([
         ('continuous', Pipeline([
             ('get', ColumnExtractor(CONTINUOUS_FIELDS)),
+            # ('scale', MinMaxScaler()),
             ('debugger', Debugger())
         ])),
         # ('averages', Pipeline([

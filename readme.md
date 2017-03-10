@@ -56,6 +56,8 @@
 [923] test-mlogloss:0.534524 added passed days
 [1251] test-mlogloss:0.534307 added 20 neighbourhoods from description
 [1058] test-mlogloss:0.534832 added only 4 neighbourhoods
+[969] test-mlogloss:0.536202 min-max-scaler for continuous
+[1214] test-mlogloss:0.533714 with fixed prices
 
 ### Manager Skill Optimizations
 - Changed mean for all values - no improvement
