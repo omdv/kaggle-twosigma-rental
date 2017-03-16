@@ -58,6 +58,12 @@
 [1058] test-mlogloss:0.534832 added only 4 neighbourhoods
 [969] test-mlogloss:0.536202 min-max-scaler for continuous
 [1214] test-mlogloss:0.533714 with fixed prices
+[923] test-mlogloss:0.533143 with log_price
+#### Starting from 0.533139 CV
+[1213] test-mlogloss:0.533972 with sorted_date --REMOVING--
+[1015] test-mlogloss:0.53366 with fixed prices --REMOVING--
+[1141] test-mlogloss:0.53483 with 20 neighbourhoods --REMOVING--
+
 
 ### Manager Skill Optimizations
 - Changed mean for all values - no improvement

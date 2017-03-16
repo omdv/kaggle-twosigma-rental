@@ -150,10 +150,11 @@ print(test_df.shape)
 
 joint = pd.concat([train_df,test_df])
 
-# removing outliers
-price_cut = 50000
-joint.loc[joint.price>price_cut,'price'] =\
-    joint[joint.price<price_cut].price.mean()
+# [1015] test-mlogloss:0.53366
+# # removing price outliers
+# price_cut = 50000
+# joint.loc[joint.price>price_cut,'price'] =\
+#     joint[joint.price<price_cut].price.mean()
 
 # transformation of lat and lng #
 joint["price_t"] = joint["price"]/joint["bedrooms"]
@@ -165,6 +166,14 @@ joint["num_photos"] = joint["photos"].apply(len)
 joint["num_features"] = joint["features"].apply(len)
 joint["num_description_words"] =\
     joint["description"].apply(lambda x: len(x.split(" ")))
+
+# [1213] test-mlogloss:0.533972
+# # create sorted feature by created_date
+# buf = joint[["listing_id","created"]].sort_values(by="created").reset_index()
+# buf["sorted_date"] = buf.index
+# buf = buf[["listing_id","sorted_date"]]
+# joint = pd.merge(joint,buf,how='left',on='listing_id')
+# buf = 0
 
 # convert the created column to datetime object so as to extract more features 
 joint["created"] = pd.to_datetime(joint["created"])
@@ -259,7 +268,6 @@ features = [\
     "price_t","price_t1",\
     "num_photos", "num_features","num_description_words",\
     "created_month", "created_day","created_hour",\
-    "passed_days",\
     "room_dif","room_sum",\
     "listings_by_building","listings_by_manager","listings_by_address",\
     "price_by_building","price_by_manager","price_by_address",\
