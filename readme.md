@@ -64,6 +64,19 @@
 [1015] test-mlogloss:0.53366 with fixed prices --REMOVING--
 [1141] test-mlogloss:0.53483 with 20 neighbourhoods --REMOVING--
 
+#### Continuous feature engineering
+[735] test-mlogloss:0.554142 - BEST CV w only first pipeline
+[764] test-mlogloss:0.553327 - added listings_by_street_address --KEEP--
+[673] test-mlogloss:0.554342 - added price_by_street_address --REMOVE--
+[695] test-mlogloss:0.553595 - added 20 districts --REMOVE--
+[649] test-mlogloss:0.551930 - added mean bedrooms by categories --KEEP--, 27ft
+[712] test-mlogloss:0.552559 - added mean room_sum by categories --REMOVE--
+[734] test-mlogloss:0.553119 - mean price_per_bed by categories --REMOVE--
+[734] test-mlogloss:0.553011 - mean num_photos by categories --REMOVE--
+[646] test-mlogloss:0.553748 - mean price by created day --REMOVE--
+[703] test-mlogloss:0.552404 - mean price per bed by created day --REMOVE--
+[686] test-mlogloss:0.553217 - listings by created day --REMOVE--
+
 
 ### Manager Skill Optimizations
 - Changed mean for all values - no improvement
