@@ -150,30 +150,16 @@ print(test_df.shape)
 
 joint = pd.concat([train_df,test_df])
 
-# [1015] test-mlogloss:0.53366
-# # removing price outliers
-# price_cut = 50000
-# joint.loc[joint.price>price_cut,'price'] =\
-#     joint[joint.price<price_cut].price.mean()
-
-# transformation of lat and lng #
-joint["price_t"] = joint["price"]/joint["bedrooms"]
+# feature engineering
 joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
 joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
-joint["price_t1"] = joint["price"]/joint["room_sum"]
-joint["fold_t1"] = joint["bedrooms"]/joint["room_sum"]
+joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
+joint["price_per_room"] = joint["price"]/joint["room_sum"]
+joint["bed_per_roomsum"] = joint["bedrooms"]/joint["room_sum"]
 joint["num_photos"] = joint["photos"].apply(len)
 joint["num_features"] = joint["features"].apply(len)
 joint["num_description_words"] =\
     joint["description"].apply(lambda x: len(x.split(" ")))
-
-# [1213] test-mlogloss:0.533972
-# # create sorted feature by created_date
-# buf = joint[["listing_id","created"]].sort_values(by="created").reset_index()
-# buf["sorted_date"] = buf.index
-# buf = buf[["listing_id","sorted_date"]]
-# joint = pd.merge(joint,buf,how='left',on='listing_id')
-# buf = 0
 
 # convert the created column to datetime object so as to extract more features 
 joint["created"] = pd.to_datetime(joint["created"])
@@ -184,9 +170,8 @@ joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
 
-# cleaning infinities
-# joint.loc[~np.isfinite(joint.price_t1),"price_t1"] = joint["price_t1"].median()
-# joint.loc[~np.isfinite(joint.price_t),"price_t"] = joint["price_t"].median()
+# trying zero building id
+# joint["building_id_grp0"] = [joint["building_id"]==0]
 
 # --- Adding counts
 by_manager = \
@@ -199,32 +184,56 @@ by_building = \
 by_building.columns = ['building_id','listings_by_building']
 joint = pd.merge(joint,by_building,how='left',on='building_id')   
 
-by_address = \
+by_display_address = \
     joint[['price','display_address']].groupby('display_address').count().\
     reset_index()
-by_address.columns = ['display_address','listings_by_address']
-joint = pd.merge(joint,by_address,how='left',on='display_address')
+by_display_address.columns = ['display_address','listings_by_display_address']
+joint = pd.merge(joint,by_display_address,how='left',on='display_address')
 
-# --- Adding mean price
-by_manager = \
-    joint[['price','manager_id']].groupby('manager_id').mean().reset_index()
-by_manager.columns = ['manager_id','price_by_manager']
-joint = pd.merge(joint,by_manager,how='left',on='manager_id')
-
-by_building = \
-    joint[['price','building_id']].groupby('building_id').mean().reset_index()
-by_building.columns = ['building_id','price_by_building']
-joint = pd.merge(joint,by_building,how='left',on='building_id')   
-
-by_address = \
-    joint[['price','display_address']].groupby('display_address').mean().\
+by_street_address = \
+    joint[['price','street_address']].groupby('street_address').count().\
     reset_index()
-by_address.columns = ['display_address','price_by_address']
-joint = pd.merge(joint,by_address,how='left',on='display_address')
+by_street_address.columns = ['street_address','listings_by_street_address']
+joint = pd.merge(joint,by_street_address,how='left',on='street_address')
 
-joint["price_by_address_norm"] = joint["price_by_address"]/joint["price"]/1.0
-joint["price_by_building_norm"] = joint["price_by_building"]/joint["price"]/1.0
-joint["price_by_manager_norm"] = joint["price_by_manager"]/joint["price"]/1.0
+
+# --- Adding mean of keys
+keys = ['price','bedrooms']
+mean_features = []
+for key in keys:
+    by_manager = \
+        joint[[key,'manager_id']].groupby('manager_id').mean().reset_index()
+    by_manager.columns = ['manager_id',key+'_by_manager']
+    joint = pd.merge(joint,by_manager,how='left',on='manager_id')
+
+    by_building = \
+        joint[[key,'building_id']].groupby('building_id').mean().reset_index()
+    by_building.columns = ['building_id',key+'_by_building']
+    joint = pd.merge(joint,by_building,how='left',on='building_id')   
+
+    by_display_address = \
+        joint[[key,'display_address']].groupby('display_address').mean().\
+        reset_index()
+    by_display_address.columns = ['display_address',key+'_by_display_address']
+    joint = pd.merge(joint,by_display_address,how='left',on='display_address')
+
+    by_street_address = \
+        joint[[key,'street_address']].groupby('street_address').mean().\
+        reset_index()
+    by_street_address.columns = ['street_address',key+'_by_street_address']
+    joint = pd.merge(joint,by_street_address,how='left',on='street_address')
+
+    mean_features += [key+'_by_manager',key+'_by_building',\
+        key+'_by_display_address',key+'_by_street_address']
+mean_features.remove('price_by_street_address')
+
+
+# adding price by created day
+by_created_day = \
+    joint[['listing_id','passed_days']].groupby('passed_days').count().\
+    reset_index()
+by_created_day.columns = ['passed_days','listings_by_created_day']
+joint = pd.merge(joint,by_created_day,how='left',on='passed_days')
 
 # Feature processing for CountVectorizer
 joint['features'] =\
@@ -261,27 +270,34 @@ Define features
 ===============================
 '''
 
-# define non-pipeline features
-features = [\
+# define continuous features - will be untouched
+continuous = [\
     "listing_id",\
     "bathrooms", "bedrooms", "latitude", "longitude", "price",\
-    "price_t","price_t1",\
+    "price_per_bed","price_per_room",\
     "num_photos", "num_features","num_description_words",\
     "created_month", "created_day","created_hour",\
     "room_dif","room_sum",\
-    "listings_by_building","listings_by_manager","listings_by_address",\
-    "price_by_building","price_by_manager","price_by_address",\
+    "listings_by_building","listings_by_manager",\
+    "listings_by_display_address","listings_by_street_address",\
+    "listings_by_created_day"
     ]
+continuous += mean_features
 
 # LabelEncoder for OneHotEncoder to work
 categorical = [\
-    "display_address", "manager_id", "building_id", "street_address",\
-    # "isManhattan","isCentralPark","isBroadway","isSoho","isMidtown",\
-    # "isChelsea","isHarlem","isChinatown","isTribeca","isLittleItaly",\
-    # "isFlatiron","isGreenwich","isBrooklyn","isHeights","isGramercy",\
-    # "isMurrayHill","isFinancialDist","isNolita","isDumbo","isBatteryPark"
+    "display_address", "manager_id", "building_id", "street_address",
     ]
 joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
+
+# # Binary features - merged with continuous
+# binary = [\
+#     "isManhattan","isCentralPark","isBroadway","isSoho","isMidtown",\
+#     "isChelsea","isHarlem","isChinatown","isTribeca","isLittleItaly",\
+#     "isFlatiron","isGreenwich","isBrooklyn","isHeights","isGramercy",\
+#     "isMurrayHill","isFinancialDist","isNolita","isDumbo","isBatteryPark"
+#     ]
+# joint[binary] = joint[binary].astype('int')
 
 # Split back
 train_df = joint[joint.interest_level.notnull()]
@@ -304,15 +320,15 @@ Define Pipeline
 '''
 
 # Define pipeline
-CONTINUOUS_FIELDS = features
-FACTOR_FIELDS = categorical
+NO_CHANGE_FIELDS = continuous
+CATEGORY_FIELDS = categorical
 TEXT_FIELDS = ["features"]
 TARGET_AVERAGING_FIELDS = ["manager_id", "price"]
 
 pipeline = Pipeline([
     ('features', FeatureUnion([
         ('continuous', Pipeline([
-            ('get', ColumnExtractor(CONTINUOUS_FIELDS)),
+            ('get', ColumnExtractor(NO_CHANGE_FIELDS)),
             # ('scale', MinMaxScaler()),
             ('debugger', Debugger())
         ])),
@@ -321,16 +337,16 @@ pipeline = Pipeline([
         #     ('transform', ManagerSkill(threshold = 13)),
         #     ('debugger', Debugger())
         # ])),
-        ('factors', Pipeline([
-            ('get', ColumnExtractor(FACTOR_FIELDS)),
-            ('onehot', OneHotEncoder(handle_unknown='ignore')),
-            ('debugger', Debugger())
-        ])),
-        ('vectorizer', Pipeline([
-            ('get', ColumnExtractor(TEXT_FIELDS)),
-            ('transform', ApartmentFeaturesVectorizer()),
-            ('debugger', Debugger())
-        ]))
+        # ('factors', Pipeline([
+        #     ('get', ColumnExtractor(CATEGORY_FIELDS)),
+        #     ('onehot', OneHotEncoder(handle_unknown='ignore')),
+        #     ('debugger', Debugger())
+        # ])),
+        # ('vectorizer', Pipeline([
+        #     ('get', ColumnExtractor(TEXT_FIELDS)),
+        #     ('transform', ApartmentFeaturesVectorizer()),
+        #     ('debugger', Debugger())
+        # ]))
     ]))
 ])
 
