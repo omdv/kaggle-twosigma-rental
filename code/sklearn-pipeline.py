@@ -50,6 +50,68 @@ class ManagerSkill(BaseEstimator, TransformerMixin):
         X['manager_skill'].fillna(self.mean_skill_, inplace = True)
         return X[['manager_skill']]
 
+class CategoricalTransformer(BaseEstimator, TransformerMixin):
+
+    def __init__(self, column_name, k):
+        self.threshold = k
+        self.column_name = column_name
+
+    def _reset(self):
+        if hasattr(self, 'mapping_'):
+            self.mapping_ = {}
+            self.glob_med = 0
+            self.glob_high = 0
+            self.glob_low = 0
+
+    def fit(self, X):
+        self._reset()
+
+        tmp = X.groupby([self.column_name, 'interest_level']).size().\
+            unstack().reset_index()
+        tmp = tmp.fillna(0)
+
+        tmp['record_count'] = tmp['high'] + tmp['medium'] + tmp['low']
+        tmp['high_share'] = tmp['high']/tmp['record_count']
+        tmp['med_share'] = tmp['medium']/tmp['record_count']
+
+        self.glob_high = tmp['high'].sum()/tmp['record_count'].sum()
+        self.glob_med = tmp['medium'].sum()/tmp['record_count'].sum()
+
+        tmp['lambda'] = tmp['record_count'].\
+            apply(lambda x: 1.0 / (1.0 + math.exp(self.threshold-x)))
+
+        tmp['w_high_'+self.column_name] = tmp[['high_share','lambda']].\
+            apply(lambda row:\
+            row['lambda']*row['high_share']+(1.0-row['lambda'])*self.glob_high,\
+            axis=1)
+        
+        tmp['w_med_'+self.column_name] = tmp[['med_share','lambda']].\
+            apply(lambda row:\
+            row['lambda']*row['med_share']+(1.0-row['lambda'])*self.glob_med,\
+            axis=1)
+
+        tmp['w_high_'+self.column_name] = tmp['w_high_'+self.column_name].\
+            apply(lambda x : x*(1.0 + 0.01*(np.random.uniform()-0.5)))
+        tmp['w_med_' + self.column_name] = tmp['w_med_' + self.column_name].\
+            apply(lambda x : x*(1.0 + 0.01*(np.random.uniform()-0.5)))
+
+        self.mapping_ = tmp[['w_high_' + self.column_name,\
+            'w_med_' + self.column_name,  self.column_name]]
+
+        return self
+
+    def transform(self, X):
+        X = X.merge(self.mapping_.reset_index(),\
+            how = 'left',\
+            left_on = self.column_name,\
+            right_on = self.column_name)
+        del X['index'] #remove the side-effect-of-merge column
+        X['w_high_' + self.column_name] = X['w_high_' + self.column_name].\
+        apply(lambda x: x if not np.isnan(x) else self.glob_high)
+        X['w_med_' + self.column_name] = X['w_med_' + self.column_name].\
+        apply(lambda x: x if not np.isnan(x) else self.glob_med)
+        return X
+
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
         return self
@@ -150,7 +212,8 @@ print(test_df.shape)
 
 joint = pd.concat([train_df,test_df])
 
-# feature engineering
+# --------------------------------
+# conventional feature engineering
 joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
 joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
 joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
@@ -170,10 +233,14 @@ joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
 
-# trying zero building id
-# joint["building_id_grp0"] = [joint["building_id"]==0]
+# Transform addresses
+# joint["street_address"] = joint["street_address"].apply(lambda x:\
+#     x.lower().strip())
+# joint["display_address"] = joint["display_address"].apply(lambda x:\
+#     x.lower().strip())
 
-# --- Adding counts
+# --------------------------------
+# Adding counts
 by_manager = \
     joint[['price','manager_id']].groupby('manager_id').count().reset_index()
 by_manager.columns = ['manager_id','listings_by_manager']
@@ -196,9 +263,8 @@ by_street_address = \
 by_street_address.columns = ['street_address','listings_by_street_address']
 joint = pd.merge(joint,by_street_address,how='left',on='street_address')
 
-
 # --- Adding mean of keys
-keys = ['price','bedrooms']
+keys = ['price']
 mean_features = []
 for key in keys:
     by_manager = \
@@ -226,7 +292,6 @@ for key in keys:
     mean_features += [key+'_by_manager',key+'_by_building',\
         key+'_by_display_address',key+'_by_street_address']
 mean_features.remove('price_by_street_address')
-
 
 # adding price by created day
 by_created_day = \
@@ -264,6 +329,24 @@ joint['features'] =\
 # joint['isBatteryPark'] = ds.str.lower().str.contains('battery park')
 # ds = 0
 
+# --------------------------------
+# Process categorical features
+categorical = [\
+    "display_address",\
+    "manager_id",\
+    "building_id",\
+    "street_address",
+    ]
+
+# Remove entries with one record
+# for key in categorical:
+#     counts = joint[key].value_counts()
+#     joint.ix[joint[key].isin(counts[counts==1].index),key] = "-1"
+
+# Apply LabelEncoder for Hot Encoding to work
+joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
+
+
 '''
 ===============================
 Define features
@@ -280,15 +363,8 @@ continuous = [\
     "room_dif","room_sum",\
     "listings_by_building","listings_by_manager",\
     "listings_by_display_address","listings_by_street_address",\
-    "listings_by_created_day"
     ]
 continuous += mean_features
-
-# LabelEncoder for OneHotEncoder to work
-categorical = [\
-    "display_address", "manager_id", "building_id", "street_address",
-    ]
-joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
 
 # # Binary features - merged with continuous
 # binary = [\
@@ -337,16 +413,16 @@ pipeline = Pipeline([
         #     ('transform', ManagerSkill(threshold = 13)),
         #     ('debugger', Debugger())
         # ])),
-        # ('factors', Pipeline([
-        #     ('get', ColumnExtractor(CATEGORY_FIELDS)),
-        #     ('onehot', OneHotEncoder(handle_unknown='ignore')),
-        #     ('debugger', Debugger())
-        # ])),
-        # ('vectorizer', Pipeline([
-        #     ('get', ColumnExtractor(TEXT_FIELDS)),
-        #     ('transform', ApartmentFeaturesVectorizer()),
-        #     ('debugger', Debugger())
-        # ]))
+        ('categorical', Pipeline([
+            ('get', ColumnExtractor(CATEGORY_FIELDS)),
+            ('onehot', OneHotEncoder(handle_unknown='ignore')),
+            ('debugger', Debugger())
+        ])),
+        ('vectorizer', Pipeline([
+            ('get', ColumnExtractor(TEXT_FIELDS)),
+            ('transform', ApartmentFeaturesVectorizer()),
+            ('debugger', Debugger())
+        ]))
     ]))
 ])
 
