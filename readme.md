@@ -49,6 +49,9 @@
 [933] test-mlogloss:0.533139 no skill and w/onehot (X_shape = 28677) ***BEST***
 [1114] test-mlogloss:0.533229 with mean bedrooms by categorical, X=20647
 [911] test-mlogloss:0.536069 with mean bedrooms, X=27681
+[1096] test-mlogloss:0.533035 new best CV after refactor ***BEST***
+[1127] test-mlogloss:0.534379 lowercase addresses X=27676 --REMOVING--
+[1196] test-mlogloss:0.535263 all single categories in one group --REMOVING--
 
 #### With Manager Skill
 [925] test-mlogloss:0.534963 with skill (to=5)
@@ -81,10 +84,7 @@
 [590] test-mlogloss:0.552183 - categorical with one record reduced to -1
 
 
-### Manager Skill Optimizations
-- Changed mean for all values - no improvement
-- Skill = 3*High + Medium - no improvement
-
+#### Adding high-cardinality data encoding
 
 
 ### Cross-validation

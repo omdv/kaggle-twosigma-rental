@@ -18,42 +18,12 @@ from sklearn.model_selection import train_test_split
 
 np.random.seed(42)
 
-class ManagerSkill(BaseEstimator, TransformerMixin):
-    def __init__(self, threshold = 5):
-        self.threshold = threshold
-        
-    def _reset(self):
-        if hasattr(self, 'mapping_'):
-            self.mapping_ = {}
-            self.mean_skill_ = 0.0
-        
-    def fit(self,X,y):
-        self._reset()
-        temp = pd.concat([X.manager_id,pd.get_dummies(y)], axis = 1).\
-            groupby('manager_id').mean()
-        temp.rename(columns=\
-            {0: 'high_frac', 1: 'medium_frac', 2: 'low_frac'},\
-            inplace=True)
-
-        temp['count'] = X.groupby('manager_id').count().iloc[:,0]
-        temp['manager_skill'] = temp['high_frac']*2 + temp['medium_frac']
-        mean = temp.loc[temp['count'] >= self.threshold, 'manager_skill'].mean()
-        temp.loc[temp['count'] < self.threshold, 'manager_skill'] = mean
-        
-        self.mapping_ = temp[['manager_skill']]
-        self.mean_skill_ = mean
-        return self
-        
-    def transform(self, X):
-        X = pd.merge(left = X,right = self.mapping_,how = 'left',\
-            left_on = 'manager_id',right_index = True)
-        X['manager_skill'].fillna(self.mean_skill_, inplace = True)
-        return X[['manager_skill']]
-
 class CategoricalTransformer(BaseEstimator, TransformerMixin):
 
-    def __init__(self, column_name, k):
-        self.threshold = k
+    def __init__(self, column_name, k=12.0, r=0.5, r_k=0.01):
+        self.k = k
+        self.r = r
+        self.r_k = r_k
         self.column_name = column_name
 
     def _reset(self):
@@ -61,9 +31,8 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
             self.mapping_ = {}
             self.glob_med = 0
             self.glob_high = 0
-            self.glob_low = 0
 
-    def fit(self, X):
+    def fit(self, X, y):
         self._reset()
 
         tmp = X.groupby([self.column_name, 'interest_level']).size().\
@@ -77,23 +46,23 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
         self.glob_high = tmp['high'].sum()/tmp['record_count'].sum()
         self.glob_med = tmp['medium'].sum()/tmp['record_count'].sum()
 
-        tmp['lambda'] = tmp['record_count'].\
-            apply(lambda x: 1.0 / (1.0 + math.exp(self.threshold-x)))
-
-        tmp['w_high_'+self.column_name] = tmp[['high_share','lambda']].\
-            apply(lambda row:\
-            row['lambda']*row['high_share']+(1.0-row['lambda'])*self.glob_high,\
-            axis=1)
+        # Get weight function
+        tmp['lambda'] = 1.0/(1.0+\
+            np.exp(np.float32(self.k-tmp['record_count']).clip(-self.k,self.k)\
+            /self.r))
         
-        tmp['w_med_'+self.column_name] = tmp[['med_share','lambda']].\
-            apply(lambda row:\
-            row['lambda']*row['med_share']+(1.0-row['lambda'])*self.glob_med,\
-            axis=1)
+        # Blending
+        tmp['w_high_'+self.column_name] =\
+            tmp['lambda']*tmp['high_share']+(1.0-tmp['lambda'])*self.glob_high
+        
+        tmp['w_med_'+self.column_name] =\
+            tmp['lambda']*tmp['med_share']+(1.0-tmp['lambda'])*self.glob_med
 
-        tmp['w_high_'+self.column_name] = tmp['w_high_'+self.column_name].\
-            apply(lambda x : x*(1.0 + 0.01*(np.random.uniform()-0.5)))
-        tmp['w_med_' + self.column_name] = tmp['w_med_' + self.column_name].\
-            apply(lambda x : x*(1.0 + 0.01*(np.random.uniform()-0.5)))
+        # Adding random noise
+        tmp['w_high_' + self.column_name] = tmp['w_high_' + self.column_name]*\
+            (1+self.r_k*(np.random.uniform(size = len(tmp))-0.5))
+        tmp['w_med_' + self.column_name] = tmp['w_med_' + self.column_name]*\
+            (1+self.r_k*(np.random.uniform(size = len(tmp))-0.5))
 
         self.mapping_ = tmp[['w_high_' + self.column_name,\
             'w_med_' + self.column_name,  self.column_name]]
@@ -101,16 +70,13 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        X = X.merge(self.mapping_.reset_index(),\
-            how = 'left',\
-            left_on = self.column_name,\
-            right_on = self.column_name)
-        del X['index'] #remove the side-effect-of-merge column
-        X['w_high_' + self.column_name] = X['w_high_' + self.column_name].\
-        apply(lambda x: x if not np.isnan(x) else self.glob_high)
-        X['w_med_' + self.column_name] = X['w_med_' + self.column_name].\
-        apply(lambda x: x if not np.isnan(x) else self.glob_med)
-        return X
+        X = pd.merge(X,self.mapping_,how='left',on=self.column_name)
+        # X['w_high_' + self.column_name] = X['w_high_' + self.column_name].\
+        # apply(lambda x: x if not np.isnan(x) else self.glob_high)
+        # X['w_med_' + self.column_name] = X['w_med_' + self.column_name].\
+        # apply(lambda x: x if not np.isnan(x) else self.glob_med)
+
+        return X[['w_high_' + self.column_name,'w_med_' + self.column_name]]
 
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
@@ -175,7 +141,7 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
     num_rounds=2000):
     param = {}
     param['objective'] = 'multi:softprob'
-    param['eta'] = 0.1
+    param['eta'] = 0.02
     param['max_depth'] = 4
     param['silent'] = 1
     param['num_class'] = 3
@@ -193,7 +159,7 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
         xgtest = xgb.DMatrix(test_X, label=test_y)
         watchlist = [ (xgtrain,'train'), (xgtest, 'test') ]
         model = xgb.train(plst, xgtrain, num_rounds, watchlist,\
-            early_stopping_rounds=50)
+            early_stopping_rounds=100)
     else:
         xgtest = xgb.DMatrix(test_X)
         watchlist = [ (xgtrain,'train') ]
@@ -217,6 +183,7 @@ joint = pd.concat([train_df,test_df])
 joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
 joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
 joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
+joint["price_per_bath"] = joint["price"]/joint["bathrooms"]
 joint["price_per_room"] = joint["price"]/joint["room_sum"]
 joint["bed_per_roomsum"] = joint["bedrooms"]/joint["room_sum"]
 joint["num_photos"] = joint["photos"].apply(len)
@@ -233,7 +200,7 @@ joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
 
-# Transform addresses
+# # Transform addresses
 # joint["street_address"] = joint["street_address"].apply(lambda x:\
 #     x.lower().strip())
 # joint["display_address"] = joint["display_address"].apply(lambda x:\
@@ -305,29 +272,39 @@ joint['features'] =\
     joint["features"].apply(lambda x:\
     " ".join(["_".join(i.split(" ")) for i in x]))
 
-# # Process districts
-# ds = joint.description
-# joint['isManhattan'] = ds.str.lower().str.contains('manhattan')
-# joint['isCentralPark'] = ds.str.lower().str.contains('central park')
-# joint['isBroadway'] = ds.str.lower().str.contains('broadway')
-# joint['isSoho'] = ds.str.lower().str.contains('soho')
-# joint['isMidtown'] = ds.str.lower().str.contains('midtown')
-# joint['isChelsea'] = ds.str.lower().str.contains('chelsea')
-# joint['isHarlem'] = ds.str.lower().str.contains('harlem')
-# joint['isChinatown'] = ds.str.lower().str.contains('chinatown')
-# joint['isTribeca'] = ds.str.lower().str.contains('tribeca')
-# joint['isLittleItaly'] = ds.str.lower().str.contains('little italy')
-# joint['isFlatiron'] = ds.str.lower().str.contains('flatiron')
-# joint['isGreenwich'] = ds.str.lower().str.contains('greenwich')
-# joint['isBrooklyn'] = ds.str.lower().str.contains('brooklyn')
-# joint['isHeights'] = ds.str.lower().str.contains('heights')
-# joint['isGramercy'] = ds.str.lower().str.contains('gramercy')
-# joint['isMurrayHill'] = ds.str.lower().str.contains('murray hill')
-# joint['isFinancialDist'] = ds.str.lower().str.contains('financial district')
-# joint['isNolita'] = ds.str.lower().str.contains('nolita')
-# joint['isDumbo'] = ds.str.lower().str.contains('dumbo')
-# joint['isBatteryPark'] = ds.str.lower().str.contains('battery park')
-# ds = 0
+# # # New version
+# tgts = ["high","medium"]
+# column_name = 'manager_id'
+# tmp = joint.groupby(["manager_id","interest_level"]).size().unstack().\
+# reset_index()
+# tmp = tmp.fillna(0)
+# tmp["record_count"] = tmp['high']+tmp['medium']+tmp['low']
+# tmp["high_share"] = tmp["high"]/tmp["record_count"]
+# tmp["med_share"] = tmp["medium"]/tmp["record_count"]
+
+# glob_high = tmp['high'].sum()/tmp['record_count'].sum()
+# glob_med = tmp['medium'].sum()/tmp['record_count'].sum()
+
+# k = 12.0
+# r = 0.5
+# r_k = 0.01
+
+# # Get weight function
+# tmp['lambda'] = 1.0/\
+#     (1.0+np.exp(np.float32(k-tmp['record_count']).clip(-300,300)\
+#         /r))
+# # Blending
+# tmp['w_high_'+column_name] =\
+#     tmp['lambda']*tmp['high_share']+(1.0-tmp['lambda'])*glob_high
+
+# tmp['w_med_'+column_name] =\
+#     tmp['lambda']*tmp['med_share']+(1.0-tmp['lambda'])*glob_med
+
+# # Adding random noise
+# tmp['w_high_' + column_name] = tmp['w_high_' + column_name]*\
+#     (1+r_k*(np.random.uniform(size = len(tmp))-0.5))
+# tmp['w_med_' + column_name] = tmp['w_med_' + column_name]*\
+#     (1+r_k*(np.random.uniform(size = len(tmp))-0.5))
 
 # --------------------------------
 # Process categorical features
@@ -338,7 +315,7 @@ categorical = [\
     "street_address",
     ]
 
-# Remove entries with one record
+# # Remove entries with one record
 # for key in categorical:
 #     counts = joint[key].value_counts()
 #     joint.ix[joint[key].isin(counts[counts==1].index),key] = "-1"
@@ -359,21 +336,12 @@ continuous = [\
     "bathrooms", "bedrooms", "latitude", "longitude", "price",\
     "price_per_bed","price_per_room",\
     "num_photos", "num_features","num_description_words",\
-    "created_month", "created_day","created_hour",\
+    "created_month","created_day","created_hour",\
     "room_dif","room_sum",\
     "listings_by_building","listings_by_manager",\
-    "listings_by_display_address","listings_by_street_address",\
+    "listings_by_display_address",\
     ]
 continuous += mean_features
-
-# # Binary features - merged with continuous
-# binary = [\
-#     "isManhattan","isCentralPark","isBroadway","isSoho","isMidtown",\
-#     "isChelsea","isHarlem","isChinatown","isTribeca","isLittleItaly",\
-#     "isFlatiron","isGreenwich","isBrooklyn","isHeights","isGramercy",\
-#     "isMurrayHill","isFinancialDist","isNolita","isDumbo","isBatteryPark"
-#     ]
-# joint[binary] = joint[binary].astype('int')
 
 # Split back
 train_df = joint[joint.interest_level.notnull()]
@@ -399,28 +367,30 @@ Define Pipeline
 NO_CHANGE_FIELDS = continuous
 CATEGORY_FIELDS = categorical
 TEXT_FIELDS = ["features"]
-TARGET_AVERAGING_FIELDS = ["manager_id", "price"]
+AVERAGING_FIELDS = ["manager_id","building_id"]
 
 pipeline = Pipeline([
     ('features', FeatureUnion([
         ('continuous', Pipeline([
             ('get', ColumnExtractor(NO_CHANGE_FIELDS)),
-            # ('scale', MinMaxScaler()),
             ('debugger', Debugger())
         ])),
-        # ('averages', Pipeline([
-        #     ('get', ColumnExtractor(TARGET_AVERAGING_FIELDS)),
-        #     ('transform', ManagerSkill(threshold = 13)),
+        # ('categorical', Pipeline([
+        #     ('get', ColumnExtractor(CATEGORY_FIELDS)),
+        #     ('onehot', OneHotEncoder(handle_unknown='ignore')),
         #     ('debugger', Debugger())
         # ])),
-        ('categorical', Pipeline([
-            ('get', ColumnExtractor(CATEGORY_FIELDS)),
-            ('onehot', OneHotEncoder(handle_unknown='ignore')),
-            ('debugger', Debugger())
-        ])),
         ('vectorizer', Pipeline([
             ('get', ColumnExtractor(TEXT_FIELDS)),
             ('transform', ApartmentFeaturesVectorizer()),
+            ('debugger', Debugger())
+        ])),
+        ('average_manager', Pipeline([
+            ('transform', CategoricalTransformer('manager_id')),
+            ('debugger', Debugger())
+        ])),
+        ('average_building', Pipeline([
+            ('transform', CategoricalTransformer('building_id')),
             ('debugger', Debugger())
         ]))
     ]))
