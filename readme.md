@@ -47,6 +47,9 @@
 [609] test-mlogloss:0.538005 - added skill (th=10)
 [652] test-mlogloss:0.53716 - added skill (th=5)
 [933] test-mlogloss:0.533139 no skill and w/onehot (X_shape = 28677) ***BEST***
+[1114] test-mlogloss:0.533229 with mean bedrooms by categorical, X=20647
+[911] test-mlogloss:0.536069 with mean bedrooms, X=27681
+
 #### With Manager Skill
 [925] test-mlogloss:0.534963 with skill (to=5)
 [925] test-mlogloss:0.534661 with skill (to=10)
@@ -63,7 +66,6 @@
 [1213] test-mlogloss:0.533972 with sorted_date --REMOVING--
 [1015] test-mlogloss:0.53366 with fixed prices --REMOVING--
 [1141] test-mlogloss:0.53483 with 20 neighbourhoods --REMOVING--
-
 #### Continuous feature engineering
 [735] test-mlogloss:0.554142 - BEST CV w only first pipeline
 [764] test-mlogloss:0.553327 - added listings_by_street_address --KEEP--
@@ -76,6 +78,7 @@
 [646] test-mlogloss:0.553748 - mean price by created day --REMOVE--
 [703] test-mlogloss:0.552404 - mean price per bed by created day --REMOVE--
 [686] test-mlogloss:0.553217 - listings by created day --REMOVE--
+[590] test-mlogloss:0.552183 - categorical with one record reduced to -1
 
 
 ### Manager Skill Optimizations
