@@ -44,6 +44,39 @@ f=1.0
 r_k=0.01 
 g = 1.0
 
+def calculate_average(sub1, sub2):
+    s = pd.DataFrame(data = {
+                             variable: sub1.groupby(variable, as_index = False).count()[variable],                              
+                             'sumy': sub1.groupby(variable, as_index = False).sum()['y'],
+                             'avgY': sub1.groupby(variable, as_index = False).mean()['y'],
+                             'cnt': sub1.groupby(variable, as_index = False).count()['y']
+                             })
+                             
+    tmp = sub2.merge(s.reset_index(), how='left', left_on=variable, right_on=variable) 
+    del tmp['index']                       
+    tmp.loc[pd.isnull(tmp['cnt']), 'cnt'] = 0.0
+    tmp.loc[pd.isnull(tmp['cnt']), 'sumy'] = 0.0
+
+    def compute_beta(row):
+        cnt = row['cnt'] if row['cnt'] < 200 else float('inf')
+        return 1.0 / (g + exp((cnt - k) / f))
+        
+    if lambda_val is not None:
+        tmp['beta'] = lambda_val
+    else:
+        tmp['beta'] = tmp.apply(compute_beta, axis = 1)
+        
+    tmp['adj_avg'] = tmp.apply(lambda row: (1.0 - row['beta']) * row['avgY'] + row['beta'] * row['pred_0'],
+                               axis = 1)
+                               
+    tmp.loc[pd.isnull(tmp['avgY']), 'avgY'] = tmp.loc[pd.isnull(tmp['avgY']), 'pred_0']
+    tmp.loc[pd.isnull(tmp['adj_avg']), 'adj_avg'] = tmp.loc[pd.isnull(tmp['adj_avg']), 'pred_0']
+    tmp['random'] = np.random.uniform(size = len(tmp))
+    tmp['adj_avg'] = tmp.apply(lambda row: row['adj_avg'] *(1 + (row['random'] - 0.5) * r_k),
+                               axis = 1)
+
+    return tmp['adj_avg'].ravel()
+
 def categorical_average(variable, y, pred_0, feature_name):
     def calculate_average(sub1, sub2):
         s = pd.DataFrame(data = {
@@ -171,40 +204,71 @@ X_test = transform_data(X_test)
 y = X_train['interest_level'].ravel()
 
 print("Normalizing high cordiality data...")
-normalize_high_cordiality_data()
-transform_categorical_data()
 
-remove_columns(X_train)
-remove_columns(X_test)
+variable = 'manager_id'
+y = 'medium'
+pred_0 = "pred0_medium"
+feature_name = 'manager_id_mean_medium'
 
-print("Start fitting...")
 
-param = {}
-param['objective'] = 'multi:softprob'
-param['eta'] = 0.02
-param['max_depth'] = 4
-param['silent'] = 1
-param['num_class'] = 3
-param['eval_metric'] = "mlogloss"
-param['min_child_weight'] = 1
-param['subsample'] = 0.7
-param['colsample_bytree'] = 0.7
-param['seed'] = 321
-param['nthread'] = 8
-num_rounds = 2000
+# #cv for training set 
+k_fold = StratifiedKFold(5)
+X_train[feature_name] = -999 
+for (train_index, cv_index) in k_fold.split(np.zeros(len(X_train)),
+                                                X_train['interest_level'].ravel()):
+        sub = pd.DataFrame(data = {variable: X_train[variable],
+                                   'y': X_train[y],
+                                   'pred_0': X_train[pred_0]})
+        sub1 = sub.iloc[train_index]        
+        sub2 = sub.iloc[cv_index]
+        
+        X_train.loc[cv_index, feature_name] = calculate_average(sub1, sub2)
+    
+#     #for test set
+#     sub1 = pd.DataFrame(data = {variable: X_train[variable],
+#                                 'y': X_train[y],
+#                                 'pred_0': X_train[pred_0]})
+#     sub2 = pd.DataFrame(data = {variable: X_test[variable],
+#                                 'y': X_test[y],
+#                                 'pred_0': X_test[pred_0]})
+#     X_test.loc[:, feature_name] = calculate_average(sub1, sub2) 
 
-xgtrain = xgb.DMatrix(X_train, label=y)
-clf = xgb.train(param, xgtrain, num_rounds)
 
-print("Fitted")
+# normalize_high_cordiality_data()
+# transform_categorical_data()
 
-def prepare_submission(model):
-    xgtest = xgb.DMatrix(X_test)
-    preds = model.predict(xgtest)    
-    sub = pd.DataFrame(data = {'listing_id': X_test['listing_id'].ravel()})
-    sub['low'] = preds[:, 0]
-    sub['medium'] = preds[:, 1]
-    sub['high'] = preds[:, 2]
-    sub.to_csv("submission.csv", index = False, header = True)
+# remove_columns(X_train)
+# remove_columns(X_test)
 
-prepare_submission(clf)
+# print("Start fitting...")
+
+# param = {}
+# param['objective'] = 'multi:softprob'
+# param['eta'] = 0.02
+# param['max_depth'] = 4
+# param['silent'] = 1
+# param['num_class'] = 3
+# param['eval_metric'] = "mlogloss"
+# param['min_child_weight'] = 1
+# param['subsample'] = 0.7
+# param['colsample_bytree'] = 0.7
+# param['seed'] = 321
+# num_rounds = 2000
+
+# xgtrain = xgb.DMatrix(X_train, label=y)
+# xgtest = xgb.DMatrix(X_test)
+# watchlist = [ (xgtrain,'train') ]
+# clf = xgb.train(param, xgtrain, num_rounds, watchlist)
+
+# print("Fitted")
+
+# def prepare_submission(model):
+#     xgtest = xgb.DMatrix(X_test)
+#     preds = model.predict(xgtest)    
+#     sub = pd.DataFrame(data = {'listing_id': X_test['listing_id'].ravel()})
+#     sub['low'] = preds[:, 0]
+#     sub['medium'] = preds[:, 1]
+#     sub['high'] = preds[:, 2]
+#     sub.to_csv("submission.csv", index = False, header = True)
+
+# prepare_submission(clf)

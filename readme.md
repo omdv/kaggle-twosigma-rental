@@ -46,10 +46,10 @@
 [680] test-mlogloss:0.53842 - added price by ...
 [609] test-mlogloss:0.538005 - added skill (th=10)
 [652] test-mlogloss:0.53716 - added skill (th=5)
-[933] test-mlogloss:0.533139 no skill and w/onehot (X_shape = 28677) ***BEST***
+[933] test-mlogloss:0.533139 no skill and w/onehot (X_shape = 28677)
 [1114] test-mlogloss:0.533229 with mean bedrooms by categorical, X=20647
 [911] test-mlogloss:0.536069 with mean bedrooms, X=27681
-[1096] test-mlogloss:0.533035 new best CV after refactor ***BEST***
+[1096] test-mlogloss:0.533035 new best CV after refactor
 [1127] test-mlogloss:0.534379 lowercase addresses X=27676 --REMOVING--
 [1196] test-mlogloss:0.535263 all single categories in one group --REMOVING--
 
@@ -83,8 +83,15 @@
 [686] test-mlogloss:0.553217 - listings by created day --REMOVE--
 [590] test-mlogloss:0.552183 - categorical with one record reduced to -1
 
-
 #### Adding high-cardinality data encoding
+[1999] test-mlogloss:0.547035 - switched off hot-encoding **BASELINE**
+[1999] test-mlogloss:0.536914 - added building and manager encoding
+[1999] test-mlogloss:0.527346 - same as above but grouped singletones
+[1999] test-mlogloss:0.530126 - same as above but with hot encoding --REMOVE--
+[1999] test-mlogloss:0.540653 - added display address --TRY WITH DIM REDUCTION--
+[1999] test-mlogloss:0.54904 - lowering addresses --REMOVE FOR NOW--
+[1999] test-mlogloss:0.528982 - hot encoding only addresses
+[741] test-mlogloss:0.524402 - manager, building, no singletones, eta of 0.1 **BEST**
 
 
 ### Cross-validation

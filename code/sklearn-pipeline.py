@@ -14,26 +14,26 @@ from sklearn.pipeline import Pipeline,FeatureUnion
 from sklearn.base import BaseEstimator
 from sklearn.base import TransformerMixin
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 
 np.random.seed(42)
 
-class CategoricalTransformer(BaseEstimator, TransformerMixin):
-
-    def __init__(self, column_name, k=12.0, r=0.5, r_k=0.01):
+class CategoricalTransformer():
+    def __init__(self, column_name, k=5.0, f=1.0, r_k=0.01, folds=5):
         self.k = k
-        self.r = r
+        self.f = f
         self.r_k = r_k
         self.column_name = column_name
+        self.folds = folds
 
-    def _reset(self):
-        if hasattr(self, 'mapping_'):
-            self.mapping_ = {}
+    def _reset_fold(self):
+        if hasattr(self, '_one_fold_mapping'):
+            self._one_fold_mapping = {}
             self.glob_med = 0
             self.glob_high = 0
 
-    def fit(self, X, y):
-        self._reset()
+    def _fit_one_fold(self, X):
+        self._reset_fold()
 
         tmp = X.groupby([self.column_name, 'interest_level']).size().\
             unstack().reset_index()
@@ -47,16 +47,14 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
         self.glob_med = tmp['medium'].sum()/tmp['record_count'].sum()
 
         # Get weight function
-        tmp['lambda'] = 1.0/(1.0+\
-            np.exp(np.float32(self.k-tmp['record_count']).clip(-self.k,self.k)\
-            /self.r))
+        tmp['lambda'] = 1.0/(1.0+np.exp(np.float32(tmp['record_count']-self.k).\
+            clip(-self.k,self.k)/self.f))
         
         # Blending
         tmp['w_high_'+self.column_name] =\
-            tmp['lambda']*tmp['high_share']+(1.0-tmp['lambda'])*self.glob_high
-        
+            (1.0-tmp['lambda'])*tmp['high_share']+tmp['lambda']*self.glob_high
         tmp['w_med_'+self.column_name] =\
-            tmp['lambda']*tmp['med_share']+(1.0-tmp['lambda'])*self.glob_med
+            (1.0-tmp['lambda'])*tmp['med_share']+tmp['lambda']*self.glob_med
 
         # Adding random noise
         tmp['w_high_' + self.column_name] = tmp['w_high_' + self.column_name]*\
@@ -64,19 +62,32 @@ class CategoricalTransformer(BaseEstimator, TransformerMixin):
         tmp['w_med_' + self.column_name] = tmp['w_med_' + self.column_name]*\
             (1+self.r_k*(np.random.uniform(size = len(tmp))-0.5))
 
-        self.mapping_ = tmp[['w_high_' + self.column_name,\
+        self._one_fold_mapping = tmp[['w_high_' + self.column_name,\
             'w_med_' + self.column_name,  self.column_name]]
-
         return self
 
-    def transform(self, X):
-        X = pd.merge(X,self.mapping_,how='left',on=self.column_name)
-        # X['w_high_' + self.column_name] = X['w_high_' + self.column_name].\
-        # apply(lambda x: x if not np.isnan(x) else self.glob_high)
-        # X['w_med_' + self.column_name] = X['w_med_' + self.column_name].\
-        # apply(lambda x: x if not np.isnan(x) else self.glob_med)
-
+    def _transform_one_fold(self, X):
+        X = pd.merge(X,self._one_fold_mapping,how='left',on=self.column_name)
         return X[['w_high_' + self.column_name,'w_med_' + self.column_name]]
+
+    def fit_transform_train(self, X, y):
+        kfold = StratifiedKFold(self.folds)
+        res = np.ones((X.shape[0],2))*(-1)
+
+        for (tr_idx, cv_idx) in kfold.split(X,y):
+            self._fit_one_fold(X.iloc[tr_idx])
+            tmp = self._transform_one_fold(X.iloc[cv_idx])
+            res[cv_idx] = tmp.values
+        tmp = pd.DataFrame(res,\
+            columns=['w_high_' + self.column_name,'w_med_' + self.column_name])
+        X = pd.concat([X.reset_index(drop=True),tmp],axis=1)
+        return X
+
+    def fit_transform_test(self, Xtrain, Xtest):
+        self._fit_one_fold(Xtrain)
+        tmp = self._transform_one_fold(Xtest)
+        Xtest = pd.concat([Xtest.reset_index(drop=True),tmp],axis=1)
+        return Xtest
 
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
@@ -141,7 +152,7 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
     num_rounds=2000):
     param = {}
     param['objective'] = 'multi:softprob'
-    param['eta'] = 0.02
+    param['eta'] = 0.1
     param['max_depth'] = 4
     param['silent'] = 1
     param['num_class'] = 3
@@ -176,6 +187,7 @@ test_df = pd.read_json(test_file)
 print(train_df.shape)
 print(test_df.shape)
 
+# Merge for feature processing
 joint = pd.concat([train_df,test_df])
 
 # --------------------------------
@@ -200,7 +212,7 @@ joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
 
-# # Transform addresses
+# Transform addresses
 # joint["street_address"] = joint["street_address"].apply(lambda x:\
 #     x.lower().strip())
 # joint["display_address"] = joint["display_address"].apply(lambda x:\
@@ -272,40 +284,6 @@ joint['features'] =\
     joint["features"].apply(lambda x:\
     " ".join(["_".join(i.split(" ")) for i in x]))
 
-# # # New version
-# tgts = ["high","medium"]
-# column_name = 'manager_id'
-# tmp = joint.groupby(["manager_id","interest_level"]).size().unstack().\
-# reset_index()
-# tmp = tmp.fillna(0)
-# tmp["record_count"] = tmp['high']+tmp['medium']+tmp['low']
-# tmp["high_share"] = tmp["high"]/tmp["record_count"]
-# tmp["med_share"] = tmp["medium"]/tmp["record_count"]
-
-# glob_high = tmp['high'].sum()/tmp['record_count'].sum()
-# glob_med = tmp['medium'].sum()/tmp['record_count'].sum()
-
-# k = 12.0
-# r = 0.5
-# r_k = 0.01
-
-# # Get weight function
-# tmp['lambda'] = 1.0/\
-#     (1.0+np.exp(np.float32(k-tmp['record_count']).clip(-300,300)\
-#         /r))
-# # Blending
-# tmp['w_high_'+column_name] =\
-#     tmp['lambda']*tmp['high_share']+(1.0-tmp['lambda'])*glob_high
-
-# tmp['w_med_'+column_name] =\
-#     tmp['lambda']*tmp['med_share']+(1.0-tmp['lambda'])*glob_med
-
-# # Adding random noise
-# tmp['w_high_' + column_name] = tmp['w_high_' + column_name]*\
-#     (1+r_k*(np.random.uniform(size = len(tmp))-0.5))
-# tmp['w_med_' + column_name] = tmp['w_med_' + column_name]*\
-#     (1+r_k*(np.random.uniform(size = len(tmp))-0.5))
-
 # --------------------------------
 # Process categorical features
 categorical = [\
@@ -315,14 +293,28 @@ categorical = [\
     "street_address",
     ]
 
-# # Remove entries with one record
-# for key in categorical:
-#     counts = joint[key].value_counts()
-#     joint.ix[joint[key].isin(counts[counts==1].index),key] = "-1"
+# Remove entries with one record
+for key in categorical:
+    counts = joint[key].value_counts()
+    joint.ix[joint[key].isin(counts[counts==1].index),key] = "-1"
 
 # Apply LabelEncoder for Hot Encoding to work
 joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
 
+# Split back
+train_df = joint[joint.interest_level.notnull()]
+test_df = joint[joint.interest_level.isnull()]
+
+# --------------------------------
+# Categorical transformer
+columns = ['manager_id','building_id']
+cat_features = []
+for col in columns:
+    ctf = CategoricalTransformer(col)
+    train_df = ctf.fit_transform_train(train_df,train_df["interest_level"])
+    test_df = ctf.fit_transform_test(train_df,test_df)
+    cat_features.append('w_high_'+col)
+    cat_features.append('w_med_'+col)
 
 '''
 ===============================
@@ -342,10 +334,8 @@ continuous = [\
     "listings_by_display_address",\
     ]
 continuous += mean_features
-
-# Split back
-train_df = joint[joint.interest_level.notnull()]
-test_df = joint[joint.interest_level.isnull()]
+continuous += cat_features
+# continuous += categorical
 
 '''
 ===============================
@@ -365,7 +355,7 @@ Define Pipeline
 
 # Define pipeline
 NO_CHANGE_FIELDS = continuous
-CATEGORY_FIELDS = categorical
+CATEGORY_FIELDS = ["street_address","display_address"]
 TEXT_FIELDS = ["features"]
 AVERAGING_FIELDS = ["manager_id","building_id"]
 
@@ -384,14 +374,6 @@ pipeline = Pipeline([
             ('get', ColumnExtractor(TEXT_FIELDS)),
             ('transform', ApartmentFeaturesVectorizer()),
             ('debugger', Debugger())
-        ])),
-        ('average_manager', Pipeline([
-            ('transform', CategoricalTransformer('manager_id')),
-            ('debugger', Debugger())
-        ])),
-        ('average_building', Pipeline([
-            ('transform', CategoricalTransformer('building_id')),
-            ('debugger', Debugger())
         ]))
     ]))
 ])
@@ -402,7 +384,7 @@ pipeline = Pipeline([
 XGboost Cycle
 ===============================
 '''
-Validation = True
+Validation = False
 
 if Validation:
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -422,4 +404,4 @@ else:
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(model.best_score, out_df, model, None)
+    create_submission(0.524402, out_df, model, None)
