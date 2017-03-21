@@ -194,90 +194,84 @@ joint = pd.concat([train_df,test_df])
 # conventional feature engineering
 joint["room_dif"] = joint["bedrooms"]-joint["bathrooms"] 
 joint["room_sum"] = joint["bedrooms"]+joint["bathrooms"] 
-joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
-joint["price_per_bath"] = joint["price"]/joint["bathrooms"]
-joint["price_per_room"] = joint["price"]/joint["room_sum"]
 joint["bed_per_roomsum"] = joint["bedrooms"]/joint["room_sum"]
 joint["num_photos"] = joint["photos"].apply(len)
 joint["num_features"] = joint["features"].apply(len)
 joint["num_description_words"] =\
     joint["description"].apply(lambda x: len(x.split(" ")))
 
+# prices
+joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
+joint.loc[joint["bedrooms"] == 0, "price_per_bed"] = joint["price"]
+joint["price_per_room"] = joint["price"]/joint["room_sum"]
+joint.loc[joint["room_sum"] == 0, "price_per_room"] = joint["price"]
+
 # convert the created column to datetime object so as to extract more features 
 joint["created"] = pd.to_datetime(joint["created"])
+joint["created_date"] = joint["created"].dt.date.astype('datetime64')
 joint["passed"] = joint["created"] - joint["created"].min()
 joint["passed_days"] = joint.passed.dt.days
+joint["passed_weeks"] = (joint["passed_days"]/7).astype('int')
 joint["created_year"] = joint["created"].dt.year
 joint["created_month"] = joint["created"].dt.month
 joint["created_day"] = joint["created"].dt.day
 joint["created_hour"] = joint["created"].dt.hour
 
-# Transform addresses
-# joint["street_address"] = joint["street_address"].apply(lambda x:\
-#     x.lower().strip())
-# joint["display_address"] = joint["display_address"].apply(lambda x:\
-#     x.lower().strip())
+# add description sentiment processed by R-syuzhet
+sent_train = pd.read_json(data_path+'train_description_sentiment.json')
+sent_train.rename(columns={'train_df$listing_id':'listing_id'},inplace=True)
+sent_test = pd.read_json(data_path+'test_description_sentiment.json')
+sent_test.rename(columns={'test_df$listing_id':'listing_id'},inplace=True)
+sent_joint = pd.concat([sent_train,sent_test])
+joint = pd.merge(joint,sent_joint,how='left',on='listing_id')
 
 # --------------------------------
-# Adding counts
-by_manager = \
-    joint[['price','manager_id']].groupby('manager_id').count().reset_index()
-by_manager.columns = ['manager_id','listings_by_manager']
-joint = pd.merge(joint,by_manager,how='left',on='manager_id')
+# Adding counts of listings by keys_to_count
+keys_to_count = ["manager_id","building_id","display_address"]
+count_features = []
 
-by_building = \
-    joint[['price','building_id']].groupby('building_id').count().reset_index()
-by_building.columns = ['building_id','listings_by_building']
-joint = pd.merge(joint,by_building,how='left',on='building_id')   
+for key in keys_to_count:
+    by_key = joint[["price",key]].groupby(key).count().reset_index()
+    by_key.columns = [key,"listings_by_"+key]
+    joint = pd.merge(joint,by_key,how='left',on=key)
+    count_features.append("listings_by_"+key)
 
-by_display_address = \
-    joint[['price','display_address']].groupby('display_address').count().\
-    reset_index()
-by_display_address.columns = ['display_address','listings_by_display_address']
-joint = pd.merge(joint,by_display_address,how='left',on='display_address')
-
-by_street_address = \
-    joint[['price','street_address']].groupby('street_address').count().\
-    reset_index()
-by_street_address.columns = ['street_address','listings_by_street_address']
-joint = pd.merge(joint,by_street_address,how='left',on='street_address')
-
-# --- Adding mean of keys
-keys = ['price']
+# --- Adding mean of keys by categorical features
+keys_to_average = ["price","price_per_bed","price_per_room"]
+grps_to_average = ["manager_id","building_id","display_address","street_address"]
 mean_features = []
-for key in keys:
-    by_manager = \
-        joint[[key,'manager_id']].groupby('manager_id').mean().reset_index()
-    by_manager.columns = ['manager_id',key+'_by_manager']
-    joint = pd.merge(joint,by_manager,how='left',on='manager_id')
 
-    by_building = \
-        joint[[key,'building_id']].groupby('building_id').mean().reset_index()
-    by_building.columns = ['building_id',key+'_by_building']
-    joint = pd.merge(joint,by_building,how='left',on='building_id')   
+for key in keys_to_average:
+    for grp in grps_to_average:
+        by_grp = \
+            joint[[key,grp]].groupby(grp).mean().reset_index()
+        by_grp.rename(columns={key: key+'_by_'+grp},inplace=True)
+        joint = pd.merge(joint,by_grp,how='left',on=grp)
+        mean_features.append(key+'_by_'+grp)
 
-    by_display_address = \
-        joint[[key,'display_address']].groupby('display_address').mean().\
-        reset_index()
-    by_display_address.columns = ['display_address',key+'_by_display_address']
-    joint = pd.merge(joint,by_display_address,how='left',on='display_address')
-
-    by_street_address = \
-        joint[[key,'street_address']].groupby('street_address').mean().\
-        reset_index()
-    by_street_address.columns = ['street_address',key+'_by_street_address']
-    joint = pd.merge(joint,by_street_address,how='left',on='street_address')
-
-    mean_features += [key+'_by_manager',key+'_by_building',\
-        key+'_by_display_address',key+'_by_street_address']
 mean_features.remove('price_by_street_address')
 
-# adding price by created day
-by_created_day = \
-    joint[['listing_id','passed_days']].groupby('passed_days').count().\
-    reset_index()
-by_created_day.columns = ['passed_days','listings_by_created_day']
-joint = pd.merge(joint,by_created_day,how='left',on='passed_days')
+# # --- Adding two level means
+# keys_to_average = ["price_per_bed"]
+# grps_to_average = [
+#     ["manager_id","passed_days"],\
+#     ["building_id","passed_days"]]
+
+# for key in keys_to_average:
+#     for grp in grps_to_average:
+#         name = key+'_by_'+grp[0]+"_"+grp[1]
+#         by_grp = \
+#             joint[[key,grp[0],grp[1]]].groupby(grp).mean().reset_index()
+#         by_grp.rename(columns={key: name},inplace=True)
+#         joint = pd.merge(joint,by_grp,how='left',on=grp)
+#         mean_features.append(name)
+
+# # Time series features
+# df = joint.set_index("created").sort_index()
+# df = df.resample("1D")[['price','price_per_bed']].reset_index()
+# df.columns = ["created","price_MA","price_per_bed_MA"]
+# joint = pd.merge(joint,df,how='left',left_on='created_date',right_on='created')
+# del joint['created_y']
 
 # Feature processing for CountVectorizer
 joint['features'] =\
@@ -292,6 +286,12 @@ categorical = [\
     "building_id",\
     "street_address",
     ]
+
+# Clean addresses
+joint["street_address"] = joint["street_address"].apply(lambda x:\
+    x.lower().strip())
+joint["display_address"] = joint["display_address"].apply(lambda x:\
+    x.lower().strip())
 
 # Remove entries with one record
 for key in categorical:
@@ -327,15 +327,16 @@ continuous = [\
     "listing_id",\
     "bathrooms", "bedrooms", "latitude", "longitude", "price",\
     "price_per_bed","price_per_room",\
-    "num_photos", "num_features","num_description_words",\
+    "num_photos","num_features","num_description_words",\
     "created_month","created_day","created_hour",\
     "room_dif","room_sum",\
-    "listings_by_building","listings_by_manager",\
-    "listings_by_display_address",\
+    # "anger","anticipation","disgust","fear","joy","negative","positive",\
+    # "sadness","surprise","trust"
     ]
+continuous += count_features
 continuous += mean_features
 continuous += cat_features
-# continuous += categorical
+# continuous += ["street_address","display_address"]
 
 '''
 ===============================
@@ -356,8 +357,8 @@ Define Pipeline
 # Define pipeline
 NO_CHANGE_FIELDS = continuous
 CATEGORY_FIELDS = ["street_address","display_address"]
-TEXT_FIELDS = ["features"]
 AVERAGING_FIELDS = ["manager_id","building_id"]
+TEXT_FIELDS = ["features"]
 
 pipeline = Pipeline([
     ('features', FeatureUnion([
@@ -384,7 +385,7 @@ pipeline = Pipeline([
 XGboost Cycle
 ===============================
 '''
-Validation = False
+Validation = True
 
 if Validation:
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -404,4 +405,4 @@ else:
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.524402, out_df, model, None)
+    create_submission(0.522895, out_df, model, None)

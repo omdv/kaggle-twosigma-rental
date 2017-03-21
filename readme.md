@@ -30,11 +30,11 @@
 0.538228 | 0.54336 | refactor with listings by manager and building, 666 trees
 0.537686 |         | as above, added by address, 730 trees
 0.539730 |         | added listings by day, 713 trees
-0.535718 | 0.54225 | price by mngr, bldng, addrs, 867-1000 trees *** BEST ***
+0.535718 | 0.54225 | price by mngr, bldng, addrs, 867-1000 trees
 0.537745 |         | added norm price by mngr, bld, addr, 711
-0.535518 | 0.54408 | added only norm price by mngr, 759 *** CV BEST ***
+0.535518 | 0.54408 | added only norm price by mngr, 759
 0.537324 |         | same as above but removed room_dif
-0.536441 |         | presumably the same as my *** BEST *** but dropped CV?
+0.536441 |         | presumably the same as my best but dropped CV?
 0.536627 |         | lat, long fixed
 0.536340 |         | lat, long scaled
 0.536312 |         | fixed lat/long, locs kde, gauss 5e-3, 830 iters
@@ -90,9 +90,23 @@
 [1999] test-mlogloss:0.530126 - same as above but with hot encoding --REMOVE--
 [1999] test-mlogloss:0.540653 - added display address --TRY WITH DIM REDUCTION--
 [1999] test-mlogloss:0.54904 - lowering addresses --REMOVE FOR NOW--
-[1999] test-mlogloss:0.528982 - hot encoding only addresses
-[741] test-mlogloss:0.524402 - manager, building, no singletones, eta of 0.1 **BEST**
+[1999] test-mlogloss:0.528982 - hot encoding only addresses --REMOVE--
+[741] test-mlogloss:0.524402 - manager, building, no singles, eta=0.1
+[692] test-mlogloss:0.526064 - added label encoded categorical --REMOVE--
+[855] test-mlogloss:0.524997 - added label encoded addresses --REMOVE--
+[851] test-mlogloss:0.524472 - price_per_bath --REMOVE--
+[682] test-mlogloss:0.515589 - weight encoding by bedrooms, overfit? --NO LB IMPROVEMENT--
+[840] test-mlogloss:0.52529 - mean price_per_bed by categories --REMOVE--
+[772] test-mlogloss:0.525989 - price_per_bed infinities - price *10 --REMOVE--
+[720] test-mlogloss:0.524053 - price_per_bed = price when infinity --KEEP--
+[868] test-mlogloss:0.524994 - added addresses, lowercase --REMOVE--
+[759] test-mlogloss:0.526138 - added description sentiment --REMOVE--
+[754] test-mlogloss:0.52314 - added mean price_per_bed --KEEP--
+[842] test-mlogloss:0.522895 - new best CV after refactor, order of features --BEST CV and LB--
 
+#### Rejected features
+- price_per_bath
+- price_by_street_address
 
 ### Cross-validation
 CV | Iter | Size
@@ -104,6 +118,9 @@ CV | Iter | Size
 0.574613 | 296 | 2%
 
 ### Ideas
+Do something with addresses
+Do something with date
+Do something with description
 Listings created by day, month, week
 Price normalized by area
 Apartment Features by area - how unique
