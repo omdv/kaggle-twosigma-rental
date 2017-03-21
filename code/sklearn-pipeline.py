@@ -237,7 +237,7 @@ for key in keys_to_count:
     count_features.append("listings_by_"+key)
 
 # --- Adding mean of keys by categorical features
-keys_to_average = ["price","price_per_bed","price_per_room"]
+keys_to_average = ["price","price_per_bed"]
 grps_to_average = ["manager_id","building_id","display_address","street_address"]
 mean_features = []
 
