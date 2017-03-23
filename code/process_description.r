@@ -13,9 +13,9 @@ vars <- setdiff(names(data), c("photos", "features"))
 test_df <- map_at(data, vars, unlist) %>% tibble::as_tibble(.)
 
 sentiment_train <- get_nrc_sentiment(train_df$description)
-joint_train <- cbind(train_df,sentiment_train)
-write(toJSON(joint_train),"../input/train_processed.json")
+joint_train <- cbind(train_df$listing_id,sentiment_train)
+write(toJSON(joint_train),"../input/train_description_sentiment.json")
 
 sentiment_test <- get_nrc_sentiment(test_df$description)
-joint_test <- cbind(test_df,sentiment_test)
-write(toJSON(joint_test),"../input/test_processed.json")
+joint_test <- cbind(test_df$listing_id,sentiment_test)
+write(toJSON(joint_test),"../input/test_description_sentiment.json")

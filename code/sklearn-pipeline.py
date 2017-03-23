@@ -366,11 +366,6 @@ pipeline = Pipeline([
             ('get', ColumnExtractor(NO_CHANGE_FIELDS)),
             ('debugger', Debugger())
         ])),
-        # ('categorical', Pipeline([
-        #     ('get', ColumnExtractor(CATEGORY_FIELDS)),
-        #     ('onehot', OneHotEncoder(handle_unknown='ignore')),
-        #     ('debugger', Debugger())
-        # ])),
         ('vectorizer', Pipeline([
             ('get', ColumnExtractor(TEXT_FIELDS)),
             ('transform', ApartmentFeaturesVectorizer()),
@@ -385,9 +380,9 @@ pipeline = Pipeline([
 XGboost Cycle
 ===============================
 '''
-Validation = True
+mode = 'Stack'
 
-if Validation:
+if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
     
     X_train = pipeline.fit_transform(X_train,y_train)
@@ -395,7 +390,45 @@ if Validation:
 
     preds, model = runXGB(X_train,y_train,X_val,y_val)
 
-else:
+elif mode == 'Stack':
+    train_df['xgb_high'] = -1
+    train_df['xgb_medium'] = -1
+    train_df['xgb_low'] = -1
+    kfold = StratifiedKFold(5)
+    res = np.ones((X.shape[0],3))*(-1)
+
+    X_train = pipeline.fit_transform(X,y).todense()
+
+    # k-fold for training set
+    for (tr_idx, cv_idx) in kfold.split(X_train,y):
+        X_tr,y_tr = X_train[tr_idx],y[tr_idx]
+        X_cv,y_cv = X_train[cv_idx],y[cv_idx]
+        preds, model = runXGB(X_tr,y_tr,X_cv,y_cv)
+        res[cv_idx] = preds
+
+    # merging and saving
+    X_train = np.column_stack((X_train,res))
+    # X_train['xgb_high'] = res[:,0]
+    # X_train['xgb_medium'] = res[:,1]
+    # X_train['xgb_low'] = res[:,2]
+    # X_train = pd.merge(X_train,\
+    #     train_df[['xgb_high','xgb_medium','xgb_low','listing_id']],how='left',
+    #     on='listing_id')
+    # X_train = pd.concat([X_train,y],axis=1)
+
+    # full for test set
+    X_tr = pipeline.fit_transform(X,y)
+    X_ts = pipeline.transform(X_test)
+    preds, model = runXGB(X_tr, y, X_ts, num_rounds=1000)
+    preds = pd.DataFrame(preds)
+    preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
+    X_test = np.column_stack((X_ts.todense(),preds))
+
+    print ("Exporting files")
+    np.savetxt("../output/train_stacknet.csv",X_train,delimiter=",",fmt='%.5f')
+    np.savetxt("../output/test_stacknet.csv",X_test,delimiter=",",fmt='%.5f')  
+
+elif mode == 'Train':
     X_train = pipeline.fit_transform(X,y)
     X_test = pipeline.transform(X_test)
 
