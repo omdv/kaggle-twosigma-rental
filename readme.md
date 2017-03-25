@@ -103,10 +103,19 @@
 [759] test-mlogloss:0.526138 - added description sentiment --REMOVE--
 [754] test-mlogloss:0.52314 - added mean price_per_bed --KEEP--
 [842] test-mlogloss:0.522895 - new best CV after refactor, order of features --BEST CV and LB--
+[863] test-mlogloss:0.523752 - same as best but with deduplicated features --BASELINE--
 
 #### Rejected features
 - price_per_bath
 - price_by_street_address
+
+#### Image EXIF
+'IPTC:Keywords' - 279 occurences
+[1217] test-mlogloss:0.527858 - with all digital exif features (1012 features)
+[1706] test-mlogloss:0.527062 - exif > 200 count (287 features)
+[1633] test-mlogloss:0.526572 - exif > 1000 count (57 features)
+[1298] test-mlogloss:0.526275 - exif > 3000 count (18)
+[688] test-mlogloss:0.526999 - exif > 10000 count (11)
 
 ### Cross-validation
 CV | Iter | Size

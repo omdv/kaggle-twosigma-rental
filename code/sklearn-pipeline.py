@@ -8,6 +8,7 @@ import pandas as pd
 import xgboost as xgb
 import datetime
 from scipy import sparse
+from collections import defaultdict
 from sklearn.metrics import log_loss
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.pipeline import Pipeline,FeatureUnion
@@ -108,7 +109,7 @@ class ColumnExtractor(BaseEstimator, TransformerMixin):
         return X[self.fields]
 
 class ApartmentFeaturesVectorizer(BaseEstimator, TransformerMixin):
-    def __init__(self, num_features = 400):
+    def __init__(self, num_features = 346):
         self.num_features = num_features
         
     def fit(self, X,y):
@@ -179,6 +180,14 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
     pred_test_y = model.predict(xgtest)
     return pred_test_y, model
     
+# misc function for cleaning features
+def clean_features(row,cleaned_features):
+    res = []
+    for f in row:
+        if f in cleaned_features:
+            res.append("_".join(cleaned_features[f].split(" ")))
+    return " ".join(res)
+
 data_path = "../input/"
 train_file = data_path + "train.json"
 test_file = data_path + "test.json"
@@ -274,9 +283,39 @@ mean_features.remove('price_by_street_address')
 # del joint['created_y']
 
 # Feature processing for CountVectorizer
+# joint['features'] =\
+#     joint["features"].apply(lambda x:\
+#     ["_".join(i.split(" ")) for i in x])
+
+# --------------------------------
+# # Merge with exif
+# exif = pd.read_csv("exif_digital.csv")
+
+# counter = []
+# for i in exif.columns:
+#     counter.append([i,exif[exif[i].notnull()].shape[0]])
+
+# counter = pd.DataFrame(counter,columns=["field","count"])
+# counter = counter[counter["count"]>10000]
+
+# exif_features = counter["field"].values.tolist()
+# exif_features.remove("listing_id")
+
+# joint = pd.merge(joint,exif[counter["field"].values],how="left",on="listing_id")
+
+# --------------------------------
+# Process features
 joint['features'] =\
     joint["features"].apply(lambda x:\
-    " ".join(["_".join(i.split(" ")) for i in x]))
+    [i.lower().strip() for i in x])
+
+# prepare dedupe dictionary
+cleaned_features = defaultdict()
+for f in pd.read_csv("feature_deduplication.csv").values.tolist():
+    cleaned_features[f[0]] = f[1]
+
+joint['features'] = joint['features'].apply(\
+    lambda x: clean_features(x,cleaned_features))
 
 # --------------------------------
 # Process categorical features
@@ -336,6 +375,7 @@ continuous = [\
 continuous += count_features
 continuous += mean_features
 continuous += cat_features
+# continuous += exif_features
 # continuous += ["street_address","display_address"]
 
 '''
@@ -380,7 +420,7 @@ pipeline = Pipeline([
 XGboost Cycle
 ===============================
 '''
-mode = 'Stack'
+mode = 'Val'
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -408,13 +448,6 @@ elif mode == 'Stack':
 
     # merging and saving
     X_train = np.column_stack((X_train,res))
-    # X_train['xgb_high'] = res[:,0]
-    # X_train['xgb_medium'] = res[:,1]
-    # X_train['xgb_low'] = res[:,2]
-    # X_train = pd.merge(X_train,\
-    #     train_df[['xgb_high','xgb_medium','xgb_low','listing_id']],how='left',
-    #     on='listing_id')
-    # X_train = pd.concat([X_train,y],axis=1)
 
     # full for test set
     X_tr = pipeline.fit_transform(X,y)
