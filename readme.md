@@ -102,8 +102,15 @@
 [868] test-mlogloss:0.524994 - added addresses, lowercase --REMOVE--
 [759] test-mlogloss:0.526138 - added description sentiment --REMOVE--
 [754] test-mlogloss:0.52314 - added mean price_per_bed --KEEP--
-[842] test-mlogloss:0.522895 - new best CV after refactor, order of features --BEST CV and LB--
-[863] test-mlogloss:0.523752 - same as best but with deduplicated features --BASELINE--
+[842] test-mlogloss:0.522895 - new best CV after refactor, order of features --BEST LB--
+[863] test-mlogloss:0.523752 - same as best but with deduplicated features
+[777] test-mlogloss:0.525409 - added kmeans 40 clusters
+[1442] test-mlogloss:0.521757 - averaging by kmeans40 and listings by kmeans --KEEP--
+[2018] test-mlogloss:0.52133 - same but with kmeans80 --BEST CV--
+[2122] test-mlogloss:0.522056 - with 256 clusters and mean encoding --REMOVE--
+[1221] test-mlogloss:0.521398 - with 512 clusters mean encoded --REMOVE--
+[1623] test-mlogloss:0.528774 - with 1024 mean encoded clusters --REMOVE--
+[1821] test-mlogloss:0.530953 - with 350 mean encoded --REMOVE--
 
 #### Rejected features
 - price_per_bath

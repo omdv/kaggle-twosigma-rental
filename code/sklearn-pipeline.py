@@ -12,10 +12,10 @@ from collections import defaultdict
 from sklearn.metrics import log_loss
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.pipeline import Pipeline,FeatureUnion
-from sklearn.base import BaseEstimator
-from sklearn.base import TransformerMixin
+from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.cluster import KMeans
 
 np.random.seed(42)
 
@@ -90,6 +90,20 @@ class CategoricalTransformer():
         Xtest = pd.concat([Xtest.reset_index(drop=True),tmp],axis=1)
         return Xtest
 
+class EnsembleClassifier(BaseEstimator, ClassifierMixin):
+    def __init__(self, classifiers=None):
+        self.classifiers = classifiers
+
+    def fit(self, X, y):
+        for classifier in self.classifiers:
+            classifier.fit(X, y)
+
+    def predict_proba(self, X):
+        self.predictions_ = list()
+        for classifier in self.classifiers:
+            self.predictions_.append(classifier.predict_proba(X))
+        return self.predictions_
+
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
         return self
@@ -147,6 +161,15 @@ def create_submission(score, pred, model, importance):
     sub_file = ouDir + 'submit_' + scrstr + '.csv'
     print('Writing submission: ', sub_file)
     pred.to_csv(sub_file, index=False)
+
+def haversine_np(lon1, lat1, lon2, lat2):
+    lon1, lat1, lon2, lat2 = map(np.radians, [lon1, lat1, lon2, lat2])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = np.sin(dlat/2.0)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2.0)**2
+    c = 2 * np.arcsin(np.sqrt(a))
+    km = 6367 * c
+    return km
 
 def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
     seed_val=0,
@@ -209,6 +232,28 @@ joint["num_features"] = joint["features"].apply(len)
 joint["num_description_words"] =\
     joint["description"].apply(lambda x: len(x.split(" ")))
 
+# clusters and locations
+ny_lat = 40.785091
+ny_lon = -73.968285
+joint['distance_from_center'] = haversine_np(ny_lon,ny_lat,\
+    joint["longitude"],joint["latitude"])
+
+# Normalize (longitude, latitude) before K-means
+minmax = MinMaxScaler()
+joint["lat_scaled"] = minmax.fit_transform(joint["latitude"])
+joint["lon_scaled"] = minmax.fit_transform(joint["longitude"])
+
+# Fit k-means and get labels
+kmeans = KMeans(n_clusters=40)
+kmeans.fit(joint.loc[joint["distance_from_center"]<12,\
+    ['lon_scaled', 'lat_scaled']])
+joint.loc[joint["distance_from_center"]<12,"kmeans40"] = kmeans.labels_
+
+kmeans = KMeans(n_clusters=80)
+kmeans.fit(joint.loc[joint["distance_from_center"]<12,\
+    ['lon_scaled', 'lat_scaled']])
+joint.loc[joint["distance_from_center"]<12,"kmeans80"] = kmeans.labels_
+
 # prices
 joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
 joint.loc[joint["bedrooms"] == 0, "price_per_bed"] = joint["price"]
@@ -236,7 +281,8 @@ joint = pd.merge(joint,sent_joint,how='left',on='listing_id')
 
 # --------------------------------
 # Adding counts of listings by keys_to_count
-keys_to_count = ["manager_id","building_id","display_address"]
+keys_to_count = ["manager_id","building_id","display_address",\
+    "kmeans40","kmeans80"]
 count_features = []
 
 for key in keys_to_count:
@@ -247,7 +293,8 @@ for key in keys_to_count:
 
 # --- Adding mean of keys by categorical features
 keys_to_average = ["price","price_per_bed"]
-grps_to_average = ["manager_id","building_id","display_address","street_address"]
+grps_to_average = ["manager_id","building_id",\
+    "display_address","street_address","kmeans40","kmeans80"]
 mean_features = []
 
 for key in keys_to_average:
@@ -309,7 +356,7 @@ joint['features'] =\
     joint["features"].apply(lambda x:\
     [i.lower().strip() for i in x])
 
-# prepare dedupe dictionary
+# prepare deduplicated features
 cleaned_features = defaultdict()
 for f in pd.read_csv("feature_deduplication.csv").values.tolist():
     cleaned_features[f[0]] = f[1]
@@ -428,7 +475,7 @@ if mode == 'Val':
     X_train = pipeline.fit_transform(X_train,y_train)
     X_val = pipeline.transform(X_val)
 
-    preds, model = runXGB(X_train,y_train,X_val,y_val)
+    preds, model = runXGB(X_train,y_train,X_val,y_val,num_rounds=3000)
 
 elif mode == 'Stack':
     train_df['xgb_high'] = -1
@@ -452,7 +499,7 @@ elif mode == 'Stack':
     # full for test set
     X_tr = pipeline.fit_transform(X,y)
     X_ts = pipeline.transform(X_test)
-    preds, model = runXGB(X_tr, y, X_ts, num_rounds=1000)
+    preds, model = runXGB(X_tr, y, X_ts, num_rounds=2000)
     preds = pd.DataFrame(preds)
     preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
     X_test = np.column_stack((X_ts.todense(),preds))
@@ -465,10 +512,10 @@ elif mode == 'Train':
     X_train = pipeline.fit_transform(X,y)
     X_test = pipeline.transform(X_test)
 
-    preds, model = runXGB(X_train, y, X_test, num_rounds=1000)
+    preds, model = runXGB(X_train, y, X_test, num_rounds=2000)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.522895, out_df, model, None)
+    create_submission(0.52133, out_df, model, None)

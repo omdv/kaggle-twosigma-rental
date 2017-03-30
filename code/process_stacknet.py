@@ -37,15 +37,5 @@ res["listing_id"] = data[0]["listing_id"]
 
 res = pd.DataFrame(res)
 
-# sub1.sort_values(by='listing_id',inplace=True)
-# sub2.sort_values(by='listing_id',inplace=True)
-# sub3.sort_values(by='listing_id',inplace=True)
-
-# # res = sub2.copy()
-# high = 0.2*sub1["high"]+0.4*sub2["high"]+0.4*sub3["high"]
-# medium = 0.2*sub1["medium"]+0.4*sub2["medium"]+0.4*sub3["medium"]
-# low = 1.0-high-medium
-# listings = sub1["listing_id"].values
-
 res["listing_id"]=res["listing_id"].astype("int")
 res.to_csv("../output/stacknet_submission_averaged.csv", index=False)
