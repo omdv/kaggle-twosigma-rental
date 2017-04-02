@@ -16,6 +16,14 @@ from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.cluster import KMeans
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.linear_model import  Ridge, LinearRegression, SGDRegressor
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.naive_bayes import BernoulliNB, MultinomialNB
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
 
 np.random.seed(42)
 
@@ -90,19 +98,40 @@ class CategoricalTransformer():
         Xtest = pd.concat([Xtest.reset_index(drop=True),tmp],axis=1)
         return Xtest
 
-class EnsembleClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, classifiers=None):
+class EnsembleClassifiersTransformer():
+    def __init__(self, classifiers=None, folds = 5):
         self.classifiers = classifiers
+        self.kfold = StratifiedKFold(folds)
 
-    def fit(self, X, y):
+    def _fit_one_fold(self, X, y):
         for classifier in self.classifiers:
+            print("Fitting: ",classifier)
             classifier.fit(X, y)
 
-    def predict_proba(self, X):
-        self.predictions_ = list()
+    def _predict_one_fold(self, X):
+        res = list()
         for classifier in self.classifiers:
-            self.predictions_.append(classifier.predict_proba(X))
-        return self.predictions_
+            res.append(classifier.predict(X))
+        return np.array(res)
+
+    def fit_transform_train(self, X, y):
+        res = np.ones((X.shape[0],len(self.classifiers)))*(-1)
+        X_train = X.todense()
+        # k-fold for training set
+        for (tr_idx, cv_idx) in self.kfold.split(X_train,y):
+            X_tr,y_tr = X_train[tr_idx],y[tr_idx]
+            X_cv,y_cv = X_train[cv_idx],y[cv_idx]
+            print("Fitting fold")
+            self._fit_one_fold(X_tr,y_tr)
+            res[cv_idx,:] = np.transpose(self._predict_one_fold(X_cv))
+        return res
+
+    def fit_transform_test(self, Xtr, ytr, Xts):
+        Xtr = Xtr.todense()
+        Xts = Xts.todense()
+        self._fit_one_fold(Xtr,ytr)
+        return np.transpose(self._predict_one_fold(Xts))
+
 
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
@@ -240,8 +269,8 @@ joint['distance_from_center'] = haversine_np(ny_lon,ny_lat,\
 
 # Normalize (longitude, latitude) before K-means
 minmax = MinMaxScaler()
-joint["lat_scaled"] = minmax.fit_transform(joint["latitude"])
-joint["lon_scaled"] = minmax.fit_transform(joint["longitude"])
+joint["lat_scaled"] = minmax.fit_transform(joint["latitude"].reshape(-1,1))
+joint["lon_scaled"] = minmax.fit_transform(joint["longitude"].reshape(-1,1))
 
 # Fit k-means and get labels
 kmeans = KMeans(n_clusters=40)
@@ -281,7 +310,7 @@ joint = pd.merge(joint,sent_joint,how='left',on='listing_id')
 
 # --------------------------------
 # Adding counts of listings by keys_to_count
-keys_to_count = ["manager_id","building_id","display_address",\
+keys_to_count = ["manager_id","building_id","display_address",
     "kmeans40","kmeans80"]
 count_features = []
 
@@ -294,7 +323,8 @@ for key in keys_to_count:
 # --- Adding mean of keys by categorical features
 keys_to_average = ["price","price_per_bed"]
 grps_to_average = ["manager_id","building_id",\
-    "display_address","street_address","kmeans40","kmeans80"]
+    "display_address","street_address",\
+    "kmeans40","kmeans80"]
 mean_features = []
 
 for key in keys_to_average:
@@ -416,8 +446,8 @@ continuous = [\
     "num_photos","num_features","num_description_words",\
     "created_month","created_day","created_hour",\
     "room_dif","room_sum",\
-    # "anger","anticipation","disgust","fear","joy","negative","positive",\
-    # "sadness","surprise","trust"
+    "anger","anticipation","disgust","fear","joy","negative","positive",\
+    "sadness","surprise","trust"
     ]
 continuous += count_features
 continuous += mean_features
@@ -462,12 +492,24 @@ pipeline = Pipeline([
 ])
 
 
+# Define classifiers
+rfc1 = RandomForestClassifier(n_estimators=400, n_jobs=-1)
+gbc1 = GradientBoostingClassifier(n_estimators=300)
+nb1 = BernoulliNB()
+lr = LogisticRegression()
+sgdc = SGDClassifier(n_iter=200,n_jobs=-1)
+sgdr = SGDRegressor(n_iter=200)
+xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=2000,
+    learning_rate = 0.1,max_depth = 4,subsample = 0.8, colsample_bytree = 0.8)
+
+classifiers = [rfc1,gbc1,lr,nb1,sgdc,sgdr,xgbc1]
+
 '''
 ===============================
 XGboost Cycle
 ===============================
 '''
-mode = 'Val'
+mode = 'Train'
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -477,7 +519,20 @@ if mode == 'Val':
 
     preds, model = runXGB(X_train,y_train,X_val,y_val,num_rounds=3000)
 
-elif mode == 'Stack':
+elif mode == 'Meta':
+    X.fillna(-1,inplace=True)
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
+
+    X_train = pipeline.fit_transform(X_train,y_train)
+    X_val = pipeline.transform(X_val)
+
+    ens = EnsembleClassifiersTransformer(classifiers)
+    X_train_meta = ens.fit_transform_train(X_train,y_train)
+    X_val_meta = ens.fit_transform_test(X_train,y_train,X_val)
+
+    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=3000)
+
+elif mode == 'StackNet':
     train_df['xgb_high'] = -1
     train_df['xgb_medium'] = -1
     train_df['xgb_low'] = -1
@@ -499,14 +554,14 @@ elif mode == 'Stack':
     # full for test set
     X_tr = pipeline.fit_transform(X,y)
     X_ts = pipeline.transform(X_test)
-    preds, model = runXGB(X_tr, y, X_ts, num_rounds=2000)
+    preds, model = runXGB(X_tr, y, X_ts, num_rounds=1000)
     preds = pd.DataFrame(preds)
     preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
     X_test = np.column_stack((X_ts.todense(),preds))
 
     print ("Exporting files")
-    np.savetxt("../output/train_stacknet.csv",X_train,delimiter=",",fmt='%.5f')
-    np.savetxt("../output/test_stacknet.csv",X_test,delimiter=",",fmt='%.5f')  
+    np.savetxt("../stacknet/train_stacknet_523752.csv",X_train,delimiter=",",fmt='%.5f')
+    np.savetxt("../stacknet/test_stacknet_523752.csv",X_test,delimiter=",",fmt='%.5f')  
 
 elif mode == 'Train':
     X_train = pipeline.fit_transform(X,y)
@@ -518,4 +573,4 @@ elif mode == 'Train':
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.52133, out_df, model, None)
+    create_submission(0.522178, out_df, model, None)
