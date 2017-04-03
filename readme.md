@@ -112,6 +112,7 @@
 [1623] test-mlogloss:0.528774 - with 1024 mean encoded clusters --REMOVE--
 [1821] test-mlogloss:0.530953 - with 350 mean encoded --REMOVE--
 
+
 #### Rejected features
 - price_per_bath
 - price_by_street_address
@@ -123,6 +124,38 @@
 [1633] test-mlogloss:0.526572 - exif > 1000 count (57 features)
 [1298] test-mlogloss:0.526275 - exif > 3000 count (18)
 [688] test-mlogloss:0.526999 - exif > 10000 count (11)
+
+#### For averaging
+[1731] test-mlogloss:0.522178 - with description sentiment
+[842] test-mlogloss:0.522895 - new best CV after refactor, order of features --BEST LB--
+[2018] test-mlogloss:0.52133 - same but with kmeans80 --BEST CV--
+[1883] test-mlogloss:0.524587 - with exif
+[1974] test-mlogloss:0.52419 - refactored factorizer with exif
+[1696] test-mlogloss:0.525625 - with 400 description
+
+#### MetaClassifier
+[85] test-mlogloss:0.517465 with rfc1,xgbc1,xgbc2 (all 500) based on
+[1156] test-mlogloss:0.522676
+Fold results (cv error):
+clf  0: 0.5815
+clf  1: 0.5310
+clf  2: 0.5450
+[83] test-mlogloss:0.521941 with rfc1,xgbc1,xgbc2 (all 200) based on
+[1156] test-mlogloss:0.522676
+Fold results (cv error):
+clf  0: 0.5828
+clf  1: 0.5385
+clf  2: 0.5319
+[81] test-mlogloss:0.517228 with rfc1,xgbc1,xgbc2 (all 1000) based on
+[1156] test-mlogloss:0.522676
+Fold results (cv error):
+clf  0: 0.5803
+clf  1: 0.5387
+clf  2: 0.5930
+
+Best params:
+xgbc1 depth=4, n_estim=500
+rfc1 n_estim=1000
 
 ### Cross-validation
 CV | Iter | Size

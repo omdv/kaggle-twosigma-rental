@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import sys
 import operator
@@ -105,32 +106,34 @@ class EnsembleClassifiersTransformer():
 
     def _fit_one_fold(self, X, y):
         for classifier in self.classifiers:
-            print("Fitting: ",classifier)
             classifier.fit(X, y)
 
     def _predict_one_fold(self, X):
-        res = list()
+        res = np.ones((X.shape[0],1))*(-1)
         for classifier in self.classifiers:
-            res.append(classifier.predict(X))
-        return np.array(res)
+            res = np.column_stack((res,classifier.predict_proba(X)))
+        return np.array(res[:,1:])
 
     def fit_transform_train(self, X, y):
-        res = np.ones((X.shape[0],len(self.classifiers)))*(-1)
+        res = np.ones((X.shape[0],len(self.classifiers)*3))*(-1)
         X_train = X.todense()
         # k-fold for training set
         for (tr_idx, cv_idx) in self.kfold.split(X_train,y):
             X_tr,y_tr = X_train[tr_idx],y[tr_idx]
             X_cv,y_cv = X_train[cv_idx],y[cv_idx]
-            print("Fitting fold")
             self._fit_one_fold(X_tr,y_tr)
-            res[cv_idx,:] = np.transpose(self._predict_one_fold(X_cv))
+            res[cv_idx,:] = self._predict_one_fold(X_cv)
+            print ("Fold results (cv error):")
+            for (idx,clf) in enumerate(self.classifiers):
+                print("clf {:2d}: {:06.4f}".\
+                    format(idx, log_loss(y_cv,clf.predict_proba(X_cv))))
         return res
 
     def fit_transform_test(self, Xtr, ytr, Xts):
         Xtr = Xtr.todense()
         Xts = Xts.todense()
         self._fit_one_fold(Xtr,ytr)
-        return np.transpose(self._predict_one_fold(Xts))
+        return self._predict_one_fold(Xts)
 
 
 class Debugger(BaseEstimator, TransformerMixin):
@@ -138,7 +141,7 @@ class Debugger(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X):
-        print X.shape
+        print("Pipeline output shape: ",X.shape)
         return X
 
 class ColumnExtractor(BaseEstimator, TransformerMixin):
@@ -150,21 +153,6 @@ class ColumnExtractor(BaseEstimator, TransformerMixin):
         
     def transform(self, X):
         return X[self.fields]
-
-class ApartmentFeaturesVectorizer(BaseEstimator, TransformerMixin):
-    def __init__(self, num_features = 346):
-        self.num_features = num_features
-        
-    def fit(self, X,y):
-        self.tfidf = CountVectorizer(stop_words='english',\
-            max_features=self.num_features)
-        
-        self.tfidf.fit(X['features'])
-        return self
-        
-    def transform(self, X):
-        X_sparse = self.tfidf.transform(X['features'])
-        return X_sparse
 
 def get_importance(gbm):
     """
@@ -245,8 +233,8 @@ train_file = data_path + "train.json"
 test_file = data_path + "test.json"
 train_df = pd.read_json(train_file)
 test_df = pd.read_json(test_file)
-print(train_df.shape)
-print(test_df.shape)
+print("Starting shape of train: ",train_df.shape)
+print("Starting shape of test: ",test_df.shape)
 
 # Merge for feature processing
 joint = pd.concat([train_df,test_df])
@@ -365,20 +353,20 @@ mean_features.remove('price_by_street_address')
 #     ["_".join(i.split(" ")) for i in x])
 
 # --------------------------------
-# # Merge with exif
-# exif = pd.read_csv("exif_digital.csv")
+# Merge with exif
+exif = pd.read_csv("exif_digital.csv")
 
-# counter = []
-# for i in exif.columns:
-#     counter.append([i,exif[exif[i].notnull()].shape[0]])
+counter = []
+for i in exif.columns:
+    counter.append([i,exif[exif[i].notnull()].shape[0]])
 
-# counter = pd.DataFrame(counter,columns=["field","count"])
-# counter = counter[counter["count"]>10000]
+counter = pd.DataFrame(counter,columns=["field","count"])
+counter = counter[counter["count"]>10000]
 
-# exif_features = counter["field"].values.tolist()
-# exif_features.remove("listing_id")
+exif_features = counter["field"].values.tolist()
+exif_features.remove("listing_id")
 
-# joint = pd.merge(joint,exif[counter["field"].values],how="left",on="listing_id")
+joint = pd.merge(joint,exif[counter["field"].values],how="left",on="listing_id")
 
 # --------------------------------
 # Process features
@@ -393,6 +381,12 @@ for f in pd.read_csv("feature_deduplication.csv").values.tolist():
 
 joint['features'] = joint['features'].apply(\
     lambda x: clean_features(x,cleaned_features))
+
+# --------------------------------
+# Process description
+joint['description'] =\
+    joint["description"].apply(lambda x:\
+    " ".join([i.lower().strip() for i in x.split(" ") if len(i)>4]))
 
 # --------------------------------
 # Process categorical features
@@ -446,8 +440,8 @@ continuous = [\
     "num_photos","num_features","num_description_words",\
     "created_month","created_day","created_hour",\
     "room_dif","room_sum",\
-    "anger","anticipation","disgust","fear","joy","negative","positive",\
-    "sadness","surprise","trust"
+    # "anger","anticipation","disgust","fear","joy","negative","positive",\
+    # "sadness","surprise","trust"
     ]
 continuous += count_features
 continuous += mean_features
@@ -475,7 +469,6 @@ Define Pipeline
 NO_CHANGE_FIELDS = continuous
 CATEGORY_FIELDS = ["street_address","display_address"]
 AVERAGING_FIELDS = ["manager_id","building_id"]
-TEXT_FIELDS = ["features"]
 
 pipeline = Pipeline([
     ('features', FeatureUnion([
@@ -483,33 +476,38 @@ pipeline = Pipeline([
             ('get', ColumnExtractor(NO_CHANGE_FIELDS)),
             ('debugger', Debugger())
         ])),
-        ('vectorizer', Pipeline([
-            ('get', ColumnExtractor(TEXT_FIELDS)),
-            ('transform', ApartmentFeaturesVectorizer()),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
             ('debugger', Debugger())
-        ]))
+        ])),
+        # ('description', Pipeline([
+        #     ('get', ColumnExtractor("description")),
+        #     ('transform', CountVectorizer(max_features=400)),
+        #     ('debugger', Debugger())
+        # ]))
     ]))
 ])
 
 
 # Define classifiers
-rfc1 = RandomForestClassifier(n_estimators=400, n_jobs=-1)
-gbc1 = GradientBoostingClassifier(n_estimators=300)
+rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
+gbc = GradientBoostingClassifier(n_estimators=500)
 nb1 = BernoulliNB()
-lr = LogisticRegression()
-sgdc = SGDClassifier(n_iter=200,n_jobs=-1)
-sgdr = SGDRegressor(n_iter=200)
-xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=2000,
+lr = LogisticRegression(max_iter=300,n_jobs=-1)
+sgdc = SGDClassifier(n_iter=500,n_jobs=-1)
+sgdr = SGDRegressor(n_iter=500)
+xgbc = XGBClassifier(objective='multi:softprob',n_estimators=500,
     learning_rate = 0.1,max_depth = 4,subsample = 0.8, colsample_bytree = 0.8)
 
-classifiers = [rfc1,gbc1,lr,nb1,sgdc,sgdr,xgbc1]
+classifiers = [sgdc,sgdr,lr,gbc,rfc,xgbc]
 
 '''
 ===============================
 XGboost Cycle
 ===============================
 '''
-mode = 'Train'
+mode = 'Meta'
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -530,7 +528,7 @@ elif mode == 'Meta':
     X_train_meta = ens.fit_transform_train(X_train,y_train)
     X_val_meta = ens.fit_transform_test(X_train,y_train,X_val)
 
-    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=3000)
+    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
 
 elif mode == 'StackNet':
     train_df['xgb_high'] = -1
@@ -573,4 +571,4 @@ elif mode == 'Train':
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.522178, out_df, model, None)
+    create_submission(0.525625, out_df, model, None)
