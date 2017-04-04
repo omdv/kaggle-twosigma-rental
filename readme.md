@@ -152,10 +152,23 @@ Fold results (cv error):
 clf  0: 0.5803
 clf  1: 0.5387
 clf  2: 0.5930
+[83] test-mlogloss:0.518915 with sgdc (500),lr(300),gbc(500),rfc(1000),xgbc1
+[1156] test-mlogloss:0.522676
+Fold results (cv error):
+clf  0: 9.7911
+clf  1: 0.6821
+clf  2: 0.5392
+clf  3: 0.5799
+clf  4: 0.5310
 
-Best params:
+#### Best params:
 xgbc1 depth=4, n_estim=500
-rfc1 n_estim=1000
+xgbc2 depth=10, n_estim=200
+rfc1 n_estim=1000 (200,500,1000 - 1000 is the best)
+lr n_iter=300 (300 to 500 - no change)
+gbc n_estim=700 (500 to 700 - 700 is the best)
+knbc n_neighbors=128 (32, 64, 128, 256, 512 with 128 is the best)
+gpc - hangs up
 
 ### Cross-validation
 CV | Iter | Size

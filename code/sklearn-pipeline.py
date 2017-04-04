@@ -17,14 +17,16 @@ from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import AdaBoostClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.linear_model import  Ridge, LinearRegression, SGDRegressor
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
+
 
 np.random.seed(42)
 
@@ -492,15 +494,23 @@ pipeline = Pipeline([
 
 # Define classifiers
 rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
-gbc = GradientBoostingClassifier(n_estimators=500)
+gbc = GradientBoostingClassifier(n_estimators=1000)
+ada1 = AdaBoostClassifier(n_estimators=200)
+ada2 = AdaBoostClassifier(n_estimators=500)
+ada3 = AdaBoostClassifier(n_estimators=700)
+ada4 = AdaBoostClassifier(n_estimators=1000)
 nb1 = BernoulliNB()
 lr = LogisticRegression(max_iter=300,n_jobs=-1)
-sgdc = SGDClassifier(n_iter=500,n_jobs=-1)
+sgdc = SGDClassifier(n_iter=500,loss="modified_huber",n_jobs=-1)
 sgdr = SGDRegressor(n_iter=500)
-xgbc = XGBClassifier(objective='multi:softprob',n_estimators=500,
+knbc = KNeighborsClassifier(n_neighbors=128, n_jobs=-1)
+svc = SVC(probability=True,max_iter=300)
+xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=500,
     learning_rate = 0.1,max_depth = 4,subsample = 0.8, colsample_bytree = 0.8)
+xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=200,
+    learning_rate = 0.1,max_depth = 10,subsample = 0.8, colsample_bytree = 0.8)
 
-classifiers = [sgdc,sgdr,lr,gbc,rfc,xgbc]
+classifiers = [ada1,ada2,ada3,ada4]
 
 '''
 ===============================
