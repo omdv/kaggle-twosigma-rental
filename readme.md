@@ -111,7 +111,9 @@
 [1221] test-mlogloss:0.521398 - with 512 clusters mean encoded --REMOVE--
 [1623] test-mlogloss:0.528774 - with 1024 mean encoded clusters --REMOVE--
 [1821] test-mlogloss:0.530953 - with 350 mean encoded --REMOVE--
-
+[456] train-mlogloss:0.396015	test-mlogloss:0.525469 - same as prev best CV but scaled and NA=-1 (pipe3)
+[427]	train-mlogloss:0.421107	test-mlogloss:0.532785 - pipe1 validation
+[790]	train-mlogloss:0.317533	test-mlogloss:0.502662 - pipe2 validation
 
 #### Rejected features
 - price_per_bath
@@ -161,6 +163,23 @@ clf  2: 0.5392
 clf  3: 0.5799
 clf  4: 0.5310
 
+Pipe1: numerical only
+clf1: [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+[76] test-mlogloss:0.521289
+clf  0: 0.5802
+clf  1: 0.5343
+clf  2: 0.5799
+clf  3: 0.5444
+clf  4: 1.0743
+clf  5: 0.6068
+clf  6: 0.6742
+
+Pipe1(numerical)
+Pipe2(continuous)
+clf: usual set
+[85]	train-mlogloss:0.49138	test-mlogloss:0.513679
+
+
 #### Best params:
 xgbc1 depth=4, n_estim=500
 xgbc2 depth=10, n_estim=200
@@ -169,6 +188,8 @@ lr n_iter=300 (300 to 500 - no change)
 gbc n_estim=700 (500 to 700 - 700 is the best)
 knbc n_neighbors=128 (32, 64, 128, 256, 512 with 128 is the best)
 gpc - hangs up
+ada n_estimators=200 - (200,500,700,1000 - 200 is the best)
+mlp - best is 'tanh' with 10,60,5
 
 ### Cross-validation
 CV | Iter | Size

@@ -14,10 +14,11 @@ from sklearn.metrics import log_loss
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.pipeline import Pipeline,FeatureUnion
 from sklearn.base import BaseEstimator, TransformerMixin, ClassifierMixin
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, MinMaxScaler
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.cluster import KMeans
-from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.linear_model import LogisticRegression, SGDClassifier
@@ -25,7 +26,9 @@ from sklearn.linear_model import  Ridge, LinearRegression, SGDRegressor
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn.svm import SVC
+from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
+from kernel_mlpclf import mlp_features
 
 
 np.random.seed(42)
@@ -118,7 +121,8 @@ class EnsembleClassifiersTransformer():
 
     def fit_transform_train(self, X, y):
         res = np.ones((X.shape[0],len(self.classifiers)*3))*(-1)
-        X_train = X.todense()
+        # X_train = X.todense()
+        X_train = X
         # k-fold for training set
         for (tr_idx, cv_idx) in self.kfold.split(X_train,y):
             X_tr,y_tr = X_train[tr_idx],y[tr_idx]
@@ -132,8 +136,8 @@ class EnsembleClassifiersTransformer():
         return res
 
     def fit_transform_test(self, Xtr, ytr, Xts):
-        Xtr = Xtr.todense()
-        Xts = Xts.todense()
+        # Xtr = Xtr.todense()
+        # Xts = Xts.todense()
         self._fit_one_fold(Xtr,ytr)
         return self._predict_one_fold(Xts)
 
@@ -237,6 +241,9 @@ train_df = pd.read_json(train_file)
 test_df = pd.read_json(test_file)
 print("Starting shape of train: ",train_df.shape)
 print("Starting shape of test: ",test_df.shape)
+
+# Basic numerical features for neural network
+train_df,test_df = mlp_features(train_df,test_df,n_min=15,precision=3)
 
 # Merge for feature processing
 joint = pd.concat([train_df,test_df])
@@ -428,6 +435,7 @@ for col in columns:
     cat_features.append('w_high_'+col)
     cat_features.append('w_med_'+col)
 
+
 '''
 ===============================
 Define features
@@ -441,10 +449,15 @@ continuous = [\
     "price_per_bed","price_per_room",\
     "num_photos","num_features","num_description_words",\
     "created_month","created_day","created_hour",\
-    "room_dif","room_sum",\
-    # "anger","anticipation","disgust","fear","joy","negative","positive",\
-    # "sadness","surprise","trust"
-    ]
+    "room_dif","room_sum"]
+
+# sentiment features for additional pipeline
+sentiment = [\
+    "anger","anticipation","disgust","fear","joy","negative",\
+    "positive","sadness","surprise","trust"]
+
+# numerical from NN kernel for additional pipeline
+numerical = [i for i in train_df.columns.values if i.startswith('num_')]
 continuous += count_features
 continuous += mean_features
 continuous += cat_features
@@ -463,19 +476,76 @@ X_test = test_df
 
 '''
 ===============================
-Define Pipeline
+Define Pipeline and Ensembles
 ===============================
 '''
 
 # Define pipeline
-NO_CHANGE_FIELDS = continuous
 CATEGORY_FIELDS = ["street_address","display_address"]
 AVERAGING_FIELDS = ["manager_id","building_id"]
 
-pipeline = Pipeline([
+# Define classifiers
+rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
+gbc = GradientBoostingClassifier(n_estimators=1000)
+ada = AdaBoostClassifier(n_estimators=200)
+mlp = MLPClassifier(alpha=1e-06,\
+    hidden_layer_sizes=(10, 60, 5),activation='tanh')
+nb1 = BernoulliNB()
+lr = LogisticRegression(max_iter=300,n_jobs=-1)
+sgdc = SGDClassifier(n_iter=500,loss="modified_huber",n_jobs=-1)
+sgdr = SGDRegressor(n_iter=500)
+knbc = KNeighborsClassifier(n_neighbors=128, n_jobs=-1)
+svc = SVC(probability=True,max_iter=300)
+xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=700,
+    learning_rate = 0.1,max_depth = 4,subsample = 0.8, colsample_bytree = 0.8)
+xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=350,
+    learning_rate = 0.1,max_depth = 10,subsample = 0.8, colsample_bytree = 0.8)
+
+pipe1 = Pipeline([
+    ('features', FeatureUnion([
+        ('numerical', Pipeline([
+            ('get', ColumnExtractor(numerical)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+clf1 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
+pipe2 = Pipeline([
     ('features', FeatureUnion([
         ('continuous', Pipeline([
-            ('get', ColumnExtractor(NO_CHANGE_FIELDS)),
+            ('get', ColumnExtractor(continuous)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ])),
+    ]))
+])
+
+clf2 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
+pipe3 = Pipeline([
+    ('features', FeatureUnion([
+        ('continuous', Pipeline([
+            ('get', ColumnExtractor(continuous)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+clf3 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
+pipe4 = Pipeline([
+    ('features', FeatureUnion([
+        ('continuous', Pipeline([
+            ('get', ColumnExtractor(continuous)),
             ('debugger', Debugger())
         ])),
         ('features', Pipeline([
@@ -483,34 +553,16 @@ pipeline = Pipeline([
             ('transform', CountVectorizer(max_features=346)),
             ('debugger', Debugger())
         ])),
-        # ('description', Pipeline([
-        #     ('get', ColumnExtractor("description")),
-        #     ('transform', CountVectorizer(max_features=400)),
-        #     ('debugger', Debugger())
-        # ]))
+        ('description', Pipeline([
+            ('get', ColumnExtractor("description")),
+            ('transform', CountVectorizer(max_features=400)),
+            ('debugger', Debugger())
+        ]))
     ]))
 ])
 
+clf4 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 
-# Define classifiers
-rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
-gbc = GradientBoostingClassifier(n_estimators=1000)
-ada1 = AdaBoostClassifier(n_estimators=200)
-ada2 = AdaBoostClassifier(n_estimators=500)
-ada3 = AdaBoostClassifier(n_estimators=700)
-ada4 = AdaBoostClassifier(n_estimators=1000)
-nb1 = BernoulliNB()
-lr = LogisticRegression(max_iter=300,n_jobs=-1)
-sgdc = SGDClassifier(n_iter=500,loss="modified_huber",n_jobs=-1)
-sgdr = SGDRegressor(n_iter=500)
-knbc = KNeighborsClassifier(n_neighbors=128, n_jobs=-1)
-svc = SVC(probability=True,max_iter=300)
-xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=500,
-    learning_rate = 0.1,max_depth = 4,subsample = 0.8, colsample_bytree = 0.8)
-xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=200,
-    learning_rate = 0.1,max_depth = 10,subsample = 0.8, colsample_bytree = 0.8)
-
-classifiers = [ada1,ada2,ada3,ada4]
 
 '''
 ===============================
@@ -518,8 +570,16 @@ XGboost Cycle
 ===============================
 '''
 mode = 'Meta'
+pipeline=pipe2
+seq = [\
+    (pipe1,clf1,False),\
+    (pipe2,clf2,False),\
+    (pipe3,clf3,True),\
+    (pipe4,clf4,True),\
+    (pipe3,[xgbc1],False)]
 
 if mode == 'Val':
+    X.fillna(-1,inplace=True)
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
     
     X_train = pipeline.fit_transform(X_train,y_train)
@@ -529,14 +589,36 @@ if mode == 'Val':
 
 elif mode == 'Meta':
     X.fillna(-1,inplace=True)
+    it = 1
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
 
-    X_train = pipeline.fit_transform(X_train,y_train)
-    X_val = pipeline.transform(X_val)
+    X_train_meta = np.ones((X_train.shape[0],1))*(-1)
+    X_val_meta = np.ones((X_val.shape[0],1))*(-1)
 
-    ens = EnsembleClassifiersTransformer(classifiers)
-    X_train_meta = ens.fit_transform_train(X_train,y_train)
-    X_val_meta = ens.fit_transform_test(X_train,y_train,X_val)
+    for (pipe,clf,ifSparse) in seq:
+        X_train_p = pipe.fit_transform(X_train,y_train)
+        X_val_p = pipe.transform(X_val)
+        if ifSparse:
+            X_train_p = X_train_p.todense()
+            X_val_p = X_val_p.todense()
+        ens = EnsembleClassifiersTransformer(clf)
+        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
+        np.savetxt("pickle_train_pipe_"+str(it),X_tr_current)
+        np.savetxt("pickle_val_pipe_"+str(it),X_vl_current)
+        it += 1
+
+        X_train_meta = np.column_stack((X_train_meta,X_tr_current))
+        X_val_meta = np.column_stack((X_val_meta,X_vl_current))
+
+    X_train_meta = X_train_meta[:,1:]
+    X_val_meta = X_val_meta[:,1:]
+
+    # X_train2 = pipe2.fit_transform(X_train,y_train)
+    # X_val2 = pipe2.transform(X_val)
+    # ens1 = EnsembleClassifiersTransformer(clf1)
+    # X_train_meta = ens1.fit_transform_train(X_train,y_train)
+    # X_val_meta = ens1.fit_transform_test(X_train,y_train,X_val)
 
     preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
 
@@ -568,17 +650,22 @@ elif mode == 'StackNet':
     X_test = np.column_stack((X_ts.todense(),preds))
 
     print ("Exporting files")
-    np.savetxt("../stacknet/train_stacknet_523752.csv",X_train,delimiter=",",fmt='%.5f')
-    np.savetxt("../stacknet/test_stacknet_523752.csv",X_test,delimiter=",",fmt='%.5f')  
+    np.savetxt("../stacknet/train_stacknet_523752.csv",\
+        X_train,delimiter=",",fmt='%.5f')
+    np.savetxt("../stacknet/test_stacknet_523752.csv",\
+        X_test,delimiter=",",fmt='%.5f')  
 
 elif mode == 'Train':
+    X.fillna(-1,inplace=True)
+    X_test.fillna(-1,inplace=True)
+
     X_train = pipeline.fit_transform(X,y)
     X_test = pipeline.transform(X_test)
 
-    preds, model = runXGB(X_train, y, X_test, num_rounds=2000)
+    preds, model = runXGB(X_train, y, X_test, num_rounds=1200)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.525625, out_df, model, None)
+    create_submission(0.502662, out_df, model, None)
