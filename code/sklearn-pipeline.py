@@ -569,14 +569,13 @@ clf4 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 XGboost Cycle
 ===============================
 '''
-mode = 'Meta'
+mode = 'MetaTrain'
 pipeline=pipe2
 seq = [\
     (pipe1,clf1,False),\
     (pipe2,clf2,False),\
     (pipe3,clf3,True),\
-    (pipe4,clf4,True),\
-    (pipe3,[xgbc1],False)]
+    (pipe4,clf4,True)]
 
 if mode == 'Val':
     X.fillna(-1,inplace=True)
@@ -587,7 +586,7 @@ if mode == 'Val':
 
     preds, model = runXGB(X_train,y_train,X_val,y_val,num_rounds=3000)
 
-elif mode == 'Meta':
+elif mode == 'MetaValid':
     X.fillna(-1,inplace=True)
     it = 1
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -601,11 +600,15 @@ elif mode == 'Meta':
         if ifSparse:
             X_train_p = X_train_p.todense()
             X_val_p = X_val_p.todense()
-        ens = EnsembleClassifiersTransformer(clf)
-        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
-        X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
-        np.savetxt("pickle_train_pipe_"+str(it),X_tr_current)
-        np.savetxt("pickle_val_pipe_"+str(it),X_vl_current)
+        if it > 4:
+            ens = EnsembleClassifiersTransformer(clf)
+            X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+            X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
+            np.savetxt("pickle_train_pipe_"+str(it),X_tr_current)
+            np.savetxt("pickle_val_pipe_"+str(it),X_vl_current)
+        else:
+            X_tr_current = np.loadtxt("pickle_train_pipe_"+str(it))
+            X_vl_current = np.loadtxt("pickle_val_pipe_"+str(it))
         it += 1
 
         X_train_meta = np.column_stack((X_train_meta,X_tr_current))
@@ -614,13 +617,44 @@ elif mode == 'Meta':
     X_train_meta = X_train_meta[:,1:]
     X_val_meta = X_val_meta[:,1:]
 
-    # X_train2 = pipe2.fit_transform(X_train,y_train)
-    # X_val2 = pipe2.transform(X_val)
-    # ens1 = EnsembleClassifiersTransformer(clf1)
-    # X_train_meta = ens1.fit_transform_train(X_train,y_train)
-    # X_val_meta = ens1.fit_transform_test(X_train,y_train,X_val)
-
     preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
+
+elif mode == 'MetaTrain':
+    X_train = X.fillna(-1)
+    X_test.fillna(-1,inplace=True)
+    y_train = y
+
+    it = 1
+    X_train_meta = np.ones((X_train.shape[0],1))*(-1)
+    X_test_meta = np.ones((X_test.shape[0],1))*(-1)
+
+    for (pipe,clf,ifSparse) in seq:
+        X_train_p = pipe.fit_transform(X_train,y_train)
+        X_test_p = pipe.transform(X_test)
+        if ifSparse:
+            X_train_p = X_train_p.todense()
+            X_test_p = X_test_p.todense()
+
+        ens = EnsembleClassifiersTransformer(clf)
+        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
+        np.savetxt("pickle_train_full_pipe_"+str(it),X_tr_current)
+        np.savetxt("pickle_test_full_pipe_"+str(it),X_ts_current)
+        it += 1
+
+        X_train_meta = np.column_stack((X_train_meta,X_tr_current))
+        X_test_meta = np.column_stack((X_test_meta,X_ts_current))
+
+    X_train_meta = X_train_meta[:,1:]
+    X_test_meta = X_test_meta[:,1:]
+
+    preds, model = runXGB(X_train_meta,y_train,X_test_meta,num_rounds=100)
+
+    # Prepare Submission
+    out_df = pd.DataFrame(preds)
+    out_df.columns = ["high", "medium", "low"]
+    out_df["listing_id"] = test_df.listing_id.values
+    create_submission(0.508938, out_df, model, None)
 
 elif mode == 'StackNet':
     train_df['xgb_high'] = -1

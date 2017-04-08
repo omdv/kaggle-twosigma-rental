@@ -179,6 +179,13 @@ Pipe2(continuous)
 clf: usual set
 [85]	train-mlogloss:0.49138	test-mlogloss:0.513679
 
+Pipe1
+Pipe2
+Pipe3
+Pipe4
+clf: usual set
+[76]	train-mlogloss:0.486024	test-mlogloss:0.508938
+
 
 #### Best params:
 xgbc1 depth=4, n_estim=500
