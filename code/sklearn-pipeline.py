@@ -266,8 +266,10 @@ joint['distance_from_center'] = haversine_np(ny_lon,ny_lat,\
 
 # Normalize (longitude, latitude) before K-means
 minmax = MinMaxScaler()
-joint["lat_scaled"] = minmax.fit_transform(joint["latitude"].reshape(-1,1))
-joint["lon_scaled"] = minmax.fit_transform(joint["longitude"].reshape(-1,1))
+joint["lat_scaled"] = minmax.fit_transform(joint["latitude"].\
+    values.reshape(-1,1))
+joint["lon_scaled"] = minmax.fit_transform(joint["longitude"].\
+    values.reshape(-1,1))
 
 # Fit k-means and get labels
 kmeans = KMeans(n_clusters=40)

@@ -173,18 +173,19 @@ clf  3: 0.5444
 clf  4: 1.0743
 clf  5: 0.6068
 clf  6: 0.6742
-
+##### Case 1
 Pipe1(numerical)
 Pipe2(continuous)
 clf: usual set
 [85]	train-mlogloss:0.49138	test-mlogloss:0.513679
-
+##### Case 2
 Pipe1
 Pipe2
 Pipe3
 Pipe4
 clf: usual set
 [76]	train-mlogloss:0.486024	test-mlogloss:0.508938
+LB: 0.52809
 
 
 #### Best params:
