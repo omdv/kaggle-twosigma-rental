@@ -136,33 +136,7 @@
 [1696] test-mlogloss:0.525625 - with 400 description
 
 #### MetaClassifier
-[85] test-mlogloss:0.517465 with rfc1,xgbc1,xgbc2 (all 500) based on
-[1156] test-mlogloss:0.522676
-Fold results (cv error):
-clf  0: 0.5815
-clf  1: 0.5310
-clf  2: 0.5450
-[83] test-mlogloss:0.521941 with rfc1,xgbc1,xgbc2 (all 200) based on
-[1156] test-mlogloss:0.522676
-Fold results (cv error):
-clf  0: 0.5828
-clf  1: 0.5385
-clf  2: 0.5319
-[81] test-mlogloss:0.517228 with rfc1,xgbc1,xgbc2 (all 1000) based on
-[1156] test-mlogloss:0.522676
-Fold results (cv error):
-clf  0: 0.5803
-clf  1: 0.5387
-clf  2: 0.5930
-[83] test-mlogloss:0.518915 with sgdc (500),lr(300),gbc(500),rfc(1000),xgbc1
-[1156] test-mlogloss:0.522676
-Fold results (cv error):
-clf  0: 9.7911
-clf  1: 0.6821
-clf  2: 0.5392
-clf  3: 0.5799
-clf  4: 0.5310
-
+##### Case 0
 Pipe1: numerical only
 clf1: [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 [76] test-mlogloss:0.521289
@@ -186,6 +160,10 @@ Pipe4
 clf: usual set
 [76]	train-mlogloss:0.486024	test-mlogloss:0.508938
 LB: 0.52809
+##### Case 3
+six pipelines
+clf: usual set
+[102]	train-mlogloss:0.469265	test-mlogloss:0.50607
 
 
 #### Best params:

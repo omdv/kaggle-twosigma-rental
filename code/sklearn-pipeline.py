@@ -566,6 +566,40 @@ pipe4 = Pipeline([
 clf4 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 
 
+pipe5 = Pipeline([
+    ('features', FeatureUnion([
+        ('continuous', Pipeline([
+            ('get', ColumnExtractor(numerical)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+clf5 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
+pipe6 = Pipeline([
+    ('features', FeatureUnion([
+        ('continuous', Pipeline([
+            ('get', ColumnExtractor(continuous+exif_features+sentiment)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+clf6 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
 '''
 ===============================
 XGboost Cycle
@@ -577,7 +611,9 @@ seq = [\
     (pipe1,clf1,False),\
     (pipe2,clf2,False),\
     (pipe3,clf3,True),\
-    (pipe4,clf4,True)]
+    (pipe4,clf4,True),\
+    (pipe5,clf5,True),\
+    (pipe6,clf6,True)]
 
 if mode == 'Val':
     X.fillna(-1,inplace=True)
@@ -636,12 +672,15 @@ elif mode == 'MetaTrain':
         if ifSparse:
             X_train_p = X_train_p.todense()
             X_test_p = X_test_p.todense()
-
-        ens = EnsembleClassifiersTransformer(clf)
-        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
-        X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
-        np.savetxt("pickle_train_full_pipe_"+str(it),X_tr_current)
-        np.savetxt("pickle_test_full_pipe_"+str(it),X_ts_current)
+        if it > 4:
+            ens = EnsembleClassifiersTransformer(clf)
+            X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+            X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
+            np.savetxt("pickle_train_full_pipe_"+str(it),X_tr_current)
+            np.savetxt("pickle_test_full_pipe_"+str(it),X_ts_current)
+        else:
+            X_tr_current = np.loadtxt("pickle_train_full_pipe_"+str(it))
+            X_ts_current = np.loadtxt("pickle_test_full_pipe_"+str(it))
         it += 1
 
         X_train_meta = np.column_stack((X_train_meta,X_tr_current))
