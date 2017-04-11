@@ -112,8 +112,14 @@
 [1623] test-mlogloss:0.528774 - with 1024 mean encoded clusters --REMOVE--
 [1821] test-mlogloss:0.530953 - with 350 mean encoded --REMOVE--
 [456] train-mlogloss:0.396015	test-mlogloss:0.525469 - same as prev best CV but scaled and NA=-1 (pipe3)
-[427]	train-mlogloss:0.421107	test-mlogloss:0.532785 - pipe1 validation
-[790]	train-mlogloss:0.317533	test-mlogloss:0.502662 - pipe2 validation
+[589] test-mlogloss:0.521896 - best single-model CV (scaled continuous with apartment features)
+[460] test-mlogloss:0.521388 - new price per bed model
+[555] test-mlogloss:0.520152 - with two-level means ('price_per_room_by_manager_id_passed_days',
+ 'price_per_room_by_building_id_passed_days')
+[446] test-mlogloss:0.527186 - added kmeans80 into categorcal encoding --REMOVE--
+[477] test-mlogloss:0.519664 - added manager+building to 2nd level means --BEST CV--
+[519] test-mlogloss:0.520803 - two level counts (three options with mng, bld and passed days), individual are worse --REMOVE--
+
 
 #### Rejected features
 - price_per_bath
@@ -136,6 +142,8 @@
 [1696] test-mlogloss:0.525625 - with 400 description
 
 #### MetaClassifier
+[427]	train-mlogloss:0.421107	test-mlogloss:0.532785 - pipe1 validation
+[790]	train-mlogloss:0.317533	test-mlogloss:0.502662 - pipe2 validation
 ##### Case 0
 Pipe1: numerical only
 clf1: [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
@@ -164,6 +172,12 @@ LB: 0.52809
 six pipelines
 clf: usual set
 [102]	train-mlogloss:0.469265	test-mlogloss:0.50607
+LB: 0.52800
+
+
+#### Second level ensemble
+Four clf on top of first level, no improvement in CV
+[86]	train-mlogloss:0.49731	test-mlogloss:0.507028
 
 
 #### Best params:

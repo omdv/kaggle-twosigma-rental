@@ -285,8 +285,8 @@ joint.loc[joint["distance_from_center"]<12,"kmeans80"] = kmeans.labels_
 # prices
 joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
 joint.loc[joint["bedrooms"] == 0, "price_per_bed"] = joint["price"]
-joint["price_per_room"] = joint["price"]/joint["room_sum"]
-joint.loc[joint["room_sum"] == 0, "price_per_room"] = joint["price"]
+joint["price_per_room"] = joint["price"]/\
+    (1.0+0.5*joint["bathrooms"].clip(0,2)+joint["bedrooms"].clip(1,4))
 
 # convert the created column to datetime object so as to extract more features 
 joint["created"] = pd.to_datetime(joint["created"])
@@ -336,20 +336,36 @@ for key in keys_to_average:
 
 mean_features.remove('price_by_street_address')
 
-# # --- Adding two level means
-# keys_to_average = ["price_per_bed"]
-# grps_to_average = [
-#     ["manager_id","passed_days"],\
-#     ["building_id","passed_days"]]
+# --- Adding two level means
+keys_to_average = ["price_per_room"]
+grps_to_average = [
+    ["manager_id","passed_days"],\
+    ["building_id","passed_days"],\
+    ["manager_id","building_id"]]
 
-# for key in keys_to_average:
-#     for grp in grps_to_average:
-#         name = key+'_by_'+grp[0]+"_"+grp[1]
-#         by_grp = \
-#             joint[[key,grp[0],grp[1]]].groupby(grp).mean().reset_index()
-#         by_grp.rename(columns={key: name},inplace=True)
-#         joint = pd.merge(joint,by_grp,how='left',on=grp)
-#         mean_features.append(name)
+for key in keys_to_average:
+    for grp in grps_to_average:
+        name = key+'_by_'+grp[0]+"_"+grp[1]
+        by_grp = \
+            joint[[key,grp[0],grp[1]]].groupby(grp).mean().reset_index()
+        by_grp.rename(columns={key: name},inplace=True)
+        joint = pd.merge(joint,by_grp,how='left',on=grp)
+        mean_features.append(name)
+
+# --- Adding two level counts
+keys_to_average = ["price_per_room"]
+grps_to_average = [
+    ["manager_id","passed_days"],\
+    ["building_id","passed_days"]]
+    
+for grp in grps_to_average:
+    name = 'listings_by_'+grp[0]+"_"+grp[1]
+    by_grp = \
+        joint[[key,grp[0],grp[1]]].groupby(grp).count().reset_index()
+    # by_grp.rename(columns={key: name},inplace=True)
+    by_grp.columns = grp+[name]
+    joint = pd.merge(joint,by_grp,how='left',on=grp)
+    count_features.append(name)
 
 # # Time series features
 # df = joint.set_index("created").sort_index()
@@ -503,6 +519,12 @@ xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=700,
 xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=350,
     learning_rate = 0.1,max_depth = 10,subsample = 0.8, colsample_bytree = 0.8)
 
+
+rfclvl2 = RandomForestClassifier(n_estimators=50, n_jobs=-1)
+lrlvl2 = LogisticRegression(max_iter=50,n_jobs=-1)
+xgbclvl2 = XGBClassifier(objective='multi:softprob',n_estimators=100)
+knbclvl2 = KNeighborsClassifier(n_neighbors=128, n_jobs=-1)
+
 pipe1 = Pipeline([
     ('features', FeatureUnion([
         ('numerical', Pipeline([
@@ -600,13 +622,17 @@ pipe6 = Pipeline([
 
 clf6 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 
+# Define lvl2 ensemble
+clflvl2 = [xgbclvl2,lrlvl2,knbclvl2,rfclvl2]
+
+
 '''
 ===============================
 XGboost Cycle
 ===============================
 '''
-mode = 'MetaTrain'
-pipeline=pipe2
+mode = 'Val'
+pipeline=pipe3
 seq = [\
     (pipe1,clf1,False),\
     (pipe2,clf2,False),\
@@ -638,7 +664,7 @@ elif mode == 'MetaValid':
         if ifSparse:
             X_train_p = X_train_p.todense()
             X_val_p = X_val_p.todense()
-        if it > 4:
+        if it > 6:
             ens = EnsembleClassifiersTransformer(clf)
             X_tr_current = ens.fit_transform_train(X_train_p,y_train)
             X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
@@ -655,7 +681,11 @@ elif mode == 'MetaValid':
     X_train_meta = X_train_meta[:,1:]
     X_val_meta = X_val_meta[:,1:]
 
-    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
+    enslvl2 = EnsembleClassifiersTransformer(clflvl2)
+    X_tr_meta = enslvl2.fit_transform_train(X_train_meta,y_train)
+    X_vl_meta = enslvl2.fit_transform_test(X_train_meta,y_train,X_val_meta)
+
+    preds, model = runXGB(X_tr_meta,y_train,X_vl_meta,y_val,num_rounds=2000)
 
 elif mode == 'MetaTrain':
     X_train = X.fillna(-1)
