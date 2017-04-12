@@ -352,20 +352,21 @@ for key in keys_to_average:
         joint = pd.merge(joint,by_grp,how='left',on=grp)
         mean_features.append(name)
 
-# --- Adding two level counts
-keys_to_average = ["price_per_room"]
-grps_to_average = [
-    ["manager_id","passed_days"],\
-    ["building_id","passed_days"]]
-    
-for grp in grps_to_average:
-    name = 'listings_by_'+grp[0]+"_"+grp[1]
-    by_grp = \
-        joint[[key,grp[0],grp[1]]].groupby(grp).count().reset_index()
-    # by_grp.rename(columns={key: name},inplace=True)
-    by_grp.columns = grp+[name]
-    joint = pd.merge(joint,by_grp,how='left',on=grp)
-    count_features.append(name)
+# # --- Adding two level counts
+# keys_to_average = ["price_per_room"]
+# grps_to_average = [
+#     ["manager_id","passed_days"],\
+#     ["building_id","passed_days"],\
+#     ["manager_id","building_id"]]
+
+# for grp in grps_to_average:
+#     name = 'listings_by_'+grp[0]+"_"+grp[1]
+#     by_grp = \
+#         joint[[key,grp[0],grp[1]]].groupby(grp).count().reset_index()
+#     # by_grp.rename(columns={key: name},inplace=True)
+#     by_grp.columns = grp+[name]
+#     joint = pd.merge(joint,by_grp,how='left',on=grp)
+#     count_features.append(name)
 
 # # Time series features
 # df = joint.set_index("created").sort_index()
@@ -381,7 +382,7 @@ for grp in grps_to_average:
 
 # --------------------------------
 # Merge with exif
-exif = pd.read_csv("exif_digital.csv")
+exif = pd.read_csv("../input/exif_digital.csv")
 
 counter = []
 for i in exif.columns:
@@ -631,7 +632,7 @@ clflvl2 = [xgbclvl2,lrlvl2,knbclvl2,rfclvl2]
 XGboost Cycle
 ===============================
 '''
-mode = 'Val'
+mode = 'Train'
 pipeline=pipe3
 seq = [\
     (pipe1,clf1,False),\
@@ -648,7 +649,7 @@ if mode == 'Val':
     X_train = pipeline.fit_transform(X_train,y_train)
     X_val = pipeline.transform(X_val)
 
-    preds, model = runXGB(X_train,y_train,X_val,y_val,num_rounds=3000)
+    preds, model = runXGB(X_train,y_train,X_val,y_val,num_rounds=700)
 
 elif mode == 'MetaValid':
     X.fillna(-1,inplace=True)
@@ -767,10 +768,10 @@ elif mode == 'Train':
     X_train = pipeline.fit_transform(X,y)
     X_test = pipeline.transform(X_test)
 
-    preds, model = runXGB(X_train, y, X_test, num_rounds=1200)
+    preds, model = runXGB(X_train, y, X_test, num_rounds=700)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.502662, out_df, model, None)
+    create_submission(0.519664, out_df, model, None)

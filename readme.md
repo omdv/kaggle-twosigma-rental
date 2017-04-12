@@ -117,7 +117,7 @@
 [555] test-mlogloss:0.520152 - with two-level means ('price_per_room_by_manager_id_passed_days',
  'price_per_room_by_building_id_passed_days')
 [446] test-mlogloss:0.527186 - added kmeans80 into categorcal encoding --REMOVE--
-[477] test-mlogloss:0.519664 - added manager+building to 2nd level means --BEST CV--
+[477] test-mlogloss:0.519664 - added manager+building to 2nd level means --BEST CV-- --BEST SINGLE-MODEL LB--
 [519] test-mlogloss:0.520803 - two level counts (three options with mng, bld and passed days), individual are worse --REMOVE--
 
 
