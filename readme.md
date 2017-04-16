@@ -118,7 +118,12 @@
  'price_per_room_by_building_id_passed_days')
 [446] test-mlogloss:0.527186 - added kmeans80 into categorcal encoding --REMOVE--
 [477] test-mlogloss:0.519664 - added manager+building to 2nd level means --BEST CV-- --BEST SINGLE-MODEL LB--
+[508] test-mlogloss:0.521989 - same but if in dense format
 [519] test-mlogloss:0.520803 - two level counts (three options with mng, bld and passed days), individual are worse --REMOVE--
+[431] test-mlogloss:0.521486 - price per room divided by cat_encoded --REMOVE--
+[569] test-mlogloss:0.527082 - with gdy5 features and my xgboost params
+[121] test-mlogloss:0.517705 - with 700 xgb meta-feature
+[139] test-mlogloss:0.515926 - with 700 xgb and rf as meta-features
 
 
 #### Rejected features
@@ -173,6 +178,24 @@ six pipelines
 clf: usual set
 [102]	train-mlogloss:0.469265	test-mlogloss:0.50607
 LB: 0.52800
+
+
+#### Mean Target features
+[452]	train-mlogloss:0.41483	test-mlogloss:0.531843 - simple, manager_id, count, mean
+[565]	train-mlogloss:0.386249	test-mlogloss:0.531189 - same but without scaler and assigning -1 to NAN
+[1827]	train-mlogloss:0.398074	test-mlogloss:0.519171 - added apt features
+[489]	train-mlogloss:0.393853	test-mlogloss:0.520365 - same with NAN=-1 and scaler
+[866]	train-mlogloss:0.410159	test-mlogloss:0.521129 - my scaler
+[1376]	train-mlogloss:0.392146	test-mlogloss:0.519128 - added label-encoded categorical
+[921]	train-mlogloss:0.41478	test-mlogloss:0.519115 - added bayesian-encoded mngr and bldng
+[457]	train-mlogloss:0.337372	test-mlogloss:0.518959 - same as above but with max_depth=6
+[289]	train-mlogloss:0.261728	test-mlogloss:0.522675 - max_depth=8
+[1121]	train-mlogloss:0.321955	test-mlogloss:0.517424 - max_depth=6, eta=0.05
+[1960]	train-mlogloss:0.326363	test-mlogloss:0.517063 - max_depth=6, eta=0.03 (BEST CV) - LB 0.529
+[2999]	train-mlogloss:0.386571	test-mlogloss:0.519287 - max_depth=6, eta=0.01
+[1966]	train-mlogloss:0.328511	test-mlogloss:0.517943 - added target by building (SEPARATE PIPE)
+[1518]	train-mlogloss:0.327771	test-mlogloss:0.516821 - new BEST CV with NN params
+[2999]	train-mlogloss:0.384459	test-mlogloss:0.518427 - with exif (SEPARATE PIPE)
 
 
 #### Second level ensemble
