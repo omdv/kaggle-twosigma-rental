@@ -2,13 +2,7 @@ import numpy as np
 import pandas as pd
 import time as time
 
-def mlp_features(df_train, df_test, n_min=50, precision=3):
-    
-    # Interest: Numerical encoding of interest level
-    df_train['y'] = 0.0
-    df_train.loc[df_train.interest_level=='medium', 'y'] = 1.0
-    df_train.loc[df_train.interest_level=='high', 'y'] = 2.0
-    
+def mlp_features(df_train, df_test, n_min=50, precision=3):    
     # Location features: Latitude, longitude
     df_train['num_latitude'] = df_train.latitude.values
     df_test['num_latitude'] = df_test.latitude.values
@@ -43,42 +37,17 @@ def mlp_features(df_train, df_test, n_min=50, precision=3):
     df_train['num_OutlierAggregated'] = OutlierAggregated.values
     df_test['num_OutlierAggregated'] = OutlierAggregated2.values
     
-    # Average interest in unique locations at given precision
-    x = df_train.groupby('pos')['y'].aggregate(['count', 'mean'])
-    d = x.loc[x['count'] >= n_min, 'mean'].to_dict()
-    impute = df_train.y.mean()
-    df_train['num_pos'] = df_train.pos.apply(lambda x: d.get(x, impute))
-    df_test['num_pos'] = df_test.pos.apply(lambda x: d.get(x, impute))
-    
     # Density in unique locations at given precision
     vals = df_train['pos'].value_counts()
     dvals = vals.to_dict()
     df_train['num_pos_density'] = df_train['pos'].apply(lambda x: dvals.get(x, vals.min()))
     df_test['num_pos_density'] = df_test['pos'].apply(lambda x: dvals.get(x, vals.min()))
-
-    # Building null
-    df_train['num_building_null'] = (df_train.building_id=='0').astype(float)
-    df_test['num_building_null'] = (df_test.building_id=='0').astype(float)
-    
-    # Building supervised
-    x = df_train.groupby('building_id')['y'].aggregate(['count', 'mean'])
-    d = x.loc[x['count'] >= n_min, 'mean'].to_dict()
-    impute = df_train.y.mean()
-    df_train['num_building_id'] = df_train.building_id.apply(lambda x: d.get(x, impute))
-    df_test['num_building_id'] = df_test.building_id.apply(lambda x: d.get(x, impute))
     
     # Building frequency
     d = np.log1p(df_train.building_id.value_counts()).to_dict()
     impute = np.min(np.array(list(d.values())))
     df_train['num_fbuilding'] = df_train.building_id.apply(lambda x: d.get(x, impute))
     df_test['num_fbuilding'] = df_test.building_id.apply(lambda x: d.get(x, impute))
-    
-    # Manager supervised
-    x = df_train.groupby('manager_id')['y'].aggregate(['count', 'mean'])
-    d = x.loc[x['count'] >= n_min, 'mean'].to_dict()
-    impute = df_train.y.mean()
-    df_train['num_manager'] = df_train.manager_id.apply(lambda x: d.get(x, impute))
-    df_test['num_manager'] = df_test.manager_id.apply(lambda x: d.get(x, impute))
 
     # Manager frequency
     d = np.log1p(df_train.manager_id.value_counts()).to_dict()
@@ -107,18 +76,10 @@ def mlp_features(df_train, df_test, n_min=50, precision=3):
     
     # Composite features based on: 
     # https://www.kaggle.com/arnaldcat/two-sigma-connect-rental-listing-inquiries/a-proxy-for-sqft-and-the-interest-on-1-2-baths
-    df_train['num_priceXroom'] = (df_train.price / (1 + df_train.bedrooms.clip(1, 4) + 0.5*df_train.bathrooms.clip(0, 2))).values
-    df_test['num_priceXroom'] = (df_test.price / (1 + df_test.bedrooms.clip(1, 4) + 0.5*df_test.bathrooms.clip(0, 2))).values
     df_train['num_even_bathrooms'] = ((np.round(df_train.bathrooms) - df_train.bathrooms)==0).astype(float)
     df_test['num_even_bathrooms'] = ((np.round(df_test.bathrooms) - df_test.bathrooms)==0).astype(float)
     
     # Other features
-    df_train['num_features'] = df_train.features.apply(lambda x: len(x))
-    df_test['num_features'] = df_test.features.apply(lambda x: len(x))
-    df_train['num_photos'] = df_train.photos.apply(lambda x: len(x))
-    df_test['num_photos'] = df_test.photos.apply(lambda x: len(x))
-    df_train['num_desc_length'] = df_train.description.str.split(' ').str.len()
-    df_test['num_desc_length'] = df_test.description.str.split(' ').str.len()
     df_train['num_desc_length_null'] = (df_train.description.str.len()==0).astype(float)
     df_test['num_desc_length_null'] = (df_test.description.str.len()==0).astype(float)
     
