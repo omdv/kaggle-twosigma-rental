@@ -191,12 +191,16 @@ LB: 0.52800
 [457]	train-mlogloss:0.337372	test-mlogloss:0.518959 - same as above but with max_depth=6
 [289]	train-mlogloss:0.261728	test-mlogloss:0.522675 - max_depth=8
 [1121]	train-mlogloss:0.321955	test-mlogloss:0.517424 - max_depth=6, eta=0.05
-[1960]	train-mlogloss:0.326363	test-mlogloss:0.517063 - max_depth=6, eta=0.03 (BEST CV) - LB 0.529
+[1960]	train-mlogloss:0.326363	test-mlogloss:0.517063 - max_depth=6, eta=0.03 - LB 0.529
 [2999]	train-mlogloss:0.386571	test-mlogloss:0.519287 - max_depth=6, eta=0.01
 [1966]	train-mlogloss:0.328511	test-mlogloss:0.517943 - added target by building (SEPARATE PIPE)
 [1518]	train-mlogloss:0.327771	test-mlogloss:0.516821 - new BEST CV with NN params
 [2999]	train-mlogloss:0.384459	test-mlogloss:0.518427 - with exif (SEPARATE PIPE)
-
+[1820]	train-mlogloss:0.320246	test-mlogloss:0.516347 - added price and price_per_room quantiles
+[1412]	train-mlogloss:0.332733	test-mlogloss:0.516039 - added building in mean transformer (BEST CV)
+[1425]	train-mlogloss:0.329512	test-mlogloss:0.516461 - added mean by price_quant (SEPARATE PIPE)
+[1559]	train-mlogloss:0.324325	test-mlogloss:0.516042 - added mean by price_per_room_quant (SEPARATE PIPE)
+[1422]	train-mlogloss:0.316658	test-mlogloss:0.516445 - new mean transformer with building and manager_id (identical to 0.516039 with OLD)
 
 #### Second level ensemble
 Four clf on top of first level, no improvement in CV

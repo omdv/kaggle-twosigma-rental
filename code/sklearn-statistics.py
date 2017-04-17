@@ -168,44 +168,116 @@ class MetaFeatures(BaseEstimator, TransformerMixin):
         res = sparse.hstack([X,sparse.csr_matrix(res)])
         return res
 
-class MeanTargetTransformer():
+class MeanTargetTransformerNew():
     def __init__(self,group,folds=5,n_class=3):
         self.kfold = StratifiedKFold(folds)
         self.group = group
+        self.name_low = "_".join(group)+'_low'
+        self.name_med = "_".join(group)+'_med'
+        self.name_hig = "_".join(group)+'_hig'
+        self.names = [self.name_low,self.name_med,self.name_hig]
 
     def fit_transform_train(self, X, y):
-        X[self.group+'_low'] = np.nan
-        X[self.group+'_med'] = np.nan
-        X[self.group+'_hig'] = np.nan
+        X[self.name_low] = np.nan
+        X[self.name_med] = np.nan
+        X[self.name_hig] = np.nan
 
         for (tr_idx, cv_idx) in self.kfold.split(X,y):
-            X_tr,y_tr = X.iloc[tr_idx],y[tr_idx]
-            X_cv,y_cv = X.iloc[cv_idx],y[cv_idx]
+            print(cv_idx)
+            X_tr = X.iloc[tr_idx]
+            X_cv = X.iloc[cv_idx]
+            tmp = X_tr.groupby(self.group+['interest_level']).size().\
+                unstack(fill_value=np.nan).reset_index()
+            tmp.rename(columns={\
+                'low':self.name_low,\
+                'medium':self.name_med,\
+                'high':self.name_hig,},inplace=True)
+            
+            # normalize
+            row_sum = np.nansum(\
+                tmp[[self.name_low,self.name_med,self.name_hig]],axis=1)
+            for name in self.names:
+                tmp[name] = tmp[name]/row_sum
+            
+            # merge to fill on values on correct index for CV portion only
+            res=pd.merge(X.iloc[cv_idx],tmp,\
+                how='left',on=self.group,suffixes=('','_'))
+            res.set_index(cv_idx,inplace=True)
+            
+            # fillna full set on index
+            for name in self.names:
+                X[name].fillna(res[name+'_'],inplace=True,axis='index')
+            print(self.group,X[X[self.name_low].isnull()].shape[0])
+
+        for name in self.names:
+            X[name].fillna(0,inplace=True)
+
+        return X
+
+    def fit_transform_test(self, X, Xt):
+        # group and rename
+        tmp = X.groupby(self.group+['interest_level']).size().\
+            unstack(fill_value=np.nan).reset_index()
+        tmp.rename(columns={\
+            'low':self.name_low,\
+            'medium':self.name_med,\
+            'high':self.name_hig,},inplace=True)
+
+        # normalize
+        row_sum =\
+            np.nansum(tmp[[self.name_low,self.name_med,self.name_hig]],\
+                axis=1)
+        for name in self.names:
+            tmp[name] = tmp[name]/row_sum
+
+        Xt = pd.merge(Xt,tmp,on=self.group,how='left')
+        return Xt
+
+class MeanTargetTransformerOld():
+    def __init__(self,group,folds=5,n_class=3):
+        self.kfold = StratifiedKFold(folds)
+        self.group = group
+        self.name_low = group+'_low'
+        self.name_med = group+'_med'
+        self.name_hig = group+'_hig'
+        self.names = [self.name_low,self.name_med,self.name_hig]
+
+    def fit_transform_train(self, X, y):
+        X[self.name_low] = np.nan
+        X[self.name_med] = np.nan
+        X[self.name_hig] = np.nan
+
+        for (tr_idx, cv_idx) in self.kfold.split(X,y):
+            X_tr = X.iloc[tr_idx]
+            X_cv = X.iloc[cv_idx]
 
             for m in X_tr.groupby(self.group):
                 idx = X_cv[X_cv[self.group] == m[0]].index
-                X.loc[idx, self.group+'_low'] =\
+                X.loc[idx, self.name_low] =\
                     (m[1].interest_level == 'low').mean()
-                X.loc[idx, self.group+'_med'] =\
+                X.loc[idx, self.name_med] =\
                     (m[1].interest_level == 'medium').mean()
-                X.loc[idx, self.group+'_hig'] =\
+                X.loc[idx, self.name_hig] =\
                     (m[1].interest_level == 'high').mean()
+
+            self.res = X
+
         return X
 
-    def fit_transform_test(self, X, X_test):
-        X_test[self.group+'_low'] = np.nan
-        X_test[self.group+'_med'] = np.nan
-        X_test[self.group+'_hig'] = np.nan
-
+    def fit_transform_test(self, X, Xt):
+        Xt[self.name_low] = np.nan
+        Xt[self.name_med] = np.nan
+        Xt[self.name_hig] = np.nan
         for m in X.groupby(self.group):
-            idx = X_test[X_test[self.group] == m[0]].index
-            X_test.loc[idx, self.group+'_low'] =\
+            idx = Xt[Xt[self.group] == m[0]].index
+            Xt.loc[idx, self.name_low] =\
                 (m[1].interest_level == 'low').mean()
-            X_test.loc[idx, self.group+'_med'] =\
+            Xt.loc[idx, self.name_med] =\
                 (m[1].interest_level == 'medium').mean()
-            X_test.loc[idx, self.group+'_hig'] =\
+            Xt.loc[idx, self.name_hig] =\
                 (m[1].interest_level == 'high').mean()
-        return X_test
+        self.res = Xt
+        return Xt
 
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
@@ -487,8 +559,18 @@ for key in categorical:
 joint[categorical] = joint[categorical].apply(LabelEncoder().fit_transform)
 
 # Split back
-train_df = joint[joint.interest_level.notnull()]
-test_df = joint[joint.interest_level.isnull()]
+train_df = joint[joint.interest_level.notnull()].copy()
+test_df = joint[joint.interest_level.isnull()].copy()
+
+# --------------------------------
+# Price quantiles
+bins = train_df['price_per_room'].quantile(np.arange(0.05, 1, 0.05))
+train_df['price_per_room_quant'] = np.digitize(train_df['price_per_room'], bins)
+test_df['price_per_room_quant'] = np.digitize(test_df['price_per_room'], bins)
+
+bins = train_df['price'].quantile(np.arange(0.05, 1, 0.05))
+train_df['price_quant'] = np.digitize(train_df['price'], bins)
+test_df['price_quant'] = np.digitize(test_df['price'], bins)
 
 # --------------------------------
 # Categorical transformer
@@ -502,16 +584,22 @@ for col in columns:
     cat_features.append('w_med_'+col)
 
 # --------------------------------
-# Mean Target transformer
-columns = ['manager_id']
+# Mean Target transformer - one level
+columns = [
+    ['manager_id'],\
+    ['building_id'],\
+    ['manager_id','price_per_room_quant']]
 target_mean_features = []
 for col in columns:
-    trf = MeanTargetTransformer(col)
+    trf = MeanTargetTransformerNew(col)
     train_df = trf.fit_transform_train(train_df,train_df['interest_level'])
     test_df = trf.fit_transform_test(train_df,test_df)
-    target_mean_features.append(col+'_low')
-    target_mean_features.append(col+'_med')
-    target_mean_features.append(col+'_hig')
+    target_mean_features.append("_".join(col)+'_low')
+    target_mean_features.append("_".join(col)+'_med')
+    target_mean_features.append("_".join(col)+'_hig')
+    # target_mean_features.append(col+'_low')
+    # target_mean_features.append(col+'_med')
+    # target_mean_features.append(col+'_hig')
 
 # --------------------------------
 # Basic numerical features for neural network
@@ -526,8 +614,9 @@ Define features
 # define continuous features - will be untouched
 simple_features = [\
     "listing_id",\
-    "bathrooms", "bedrooms", "latitude", "longitude", "price",\
-    "price_per_bed","price_per_room",\
+    "bathrooms", "bedrooms", "latitude", "longitude",\
+    "price","price_per_bed","price_per_room",\
+    "price_quant","price_per_room_quant",\
     "num_photos","num_features","num_description_words",\
     "created_month","created_day","created_hour",\
     "room_dif","room_sum"]

@@ -141,6 +141,33 @@ class EnsembleClassifiersTransformer():
         self._fit_one_fold(Xtr,ytr)
         return self._predict_one_fold(Xts)
 
+class MetaFeatures(BaseEstimator, TransformerMixin):
+    def __init__(self,clf,folds=5,n_class=3):
+        self.clf = clf
+        self.kfold = StratifiedKFold(folds)
+        self.n_class = n_class
+        self.train_shape = None
+        self.train_result = None
+
+    def fit(self, X, y=None):
+        self.train_shape = X.shape
+        self.train_result = np.ones((X.shape[0],self.n_class))*(-1)
+        X = X.todense()
+        for (tr_idx, cv_idx) in self.kfold.split(X,y):
+            X_tr,y_tr = X[tr_idx],y[tr_idx]
+            X_cv,y_cv = X[cv_idx],y[cv_idx]
+            self.clf.fit(X_tr,y_tr)
+            self.train_result[cv_idx,:] = self.clf.predict_proba(X_cv)
+        self.clf.fit(X)
+        return self
+
+    def transform(self, X):
+        if X.shape == self.train_shape:
+            res = self.train_result
+        else:
+            res = self.clf.predict_proba(X)
+        res = sparse.hstack([X,sparse.csr_matrix(res)])
+        return res
 
 class Debugger(BaseEstimator, TransformerMixin):
     def fit(self, x, y=None):
@@ -320,7 +347,7 @@ for key in keys_to_count:
     count_features.append("listings_by_"+key)
 
 # --- Adding mean of keys by categorical features
-keys_to_average = ["price","price_per_bed"]
+keys_to_average = ["price","price_per_bed","bedrooms","bathrooms"]
 grps_to_average = ["manager_id","building_id",\
     "display_address","street_address",\
     "kmeans40","kmeans80"]
@@ -454,7 +481,6 @@ for col in columns:
     cat_features.append('w_high_'+col)
     cat_features.append('w_med_'+col)
 
-
 '''
 ===============================
 Define features
@@ -480,6 +506,7 @@ numerical = [i for i in train_df.columns.values if i.startswith('num_')]
 continuous += count_features
 continuous += mean_features
 continuous += cat_features
+# continuous += new_features
 # continuous += exif_features
 # continuous += ["street_address","display_address"]
 
@@ -623,6 +650,27 @@ pipe6 = Pipeline([
 
 clf6 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
 
+pipe7 = Pipeline([
+    ('features', FeatureUnion([
+        ('continuous', Pipeline([
+            ('get', ColumnExtractor(continuous)),
+            ('minmax',MinMaxScaler()),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ])),
+    ('metafeatures',Pipeline([
+        ('clf', MetaFeatures(xgbc1)),
+        ('debugger', Debugger())
+    ]))
+])
+
+clf7 = [mlp,xgbc1,xgbc2,gbc,ada,lr,knbc]
+
 # Define lvl2 ensemble
 clflvl2 = [xgbclvl2,lrlvl2,knbclvl2,rfclvl2]
 
@@ -632,7 +680,7 @@ clflvl2 = [xgbclvl2,lrlvl2,knbclvl2,rfclvl2]
 XGboost Cycle
 ===============================
 '''
-mode = 'Train'
+mode = 'Val'
 pipeline=pipe3
 seq = [\
     (pipe1,clf1,False),\
@@ -665,15 +713,15 @@ elif mode == 'MetaValid':
         if ifSparse:
             X_train_p = X_train_p.todense()
             X_val_p = X_val_p.todense()
-        if it > 6:
+        if it == 3:
             ens = EnsembleClassifiersTransformer(clf)
             X_tr_current = ens.fit_transform_train(X_train_p,y_train)
             X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
-            np.savetxt("pickle_train_pipe_"+str(it),X_tr_current)
-            np.savetxt("pickle_val_pipe_"+str(it),X_vl_current)
+            np.savetxt("../input/pickle_train_pipe_"+str(it),X_tr_current)
+            np.savetxt("../input/pickle_val_pipe_"+str(it),X_vl_current)
         else:
-            X_tr_current = np.loadtxt("pickle_train_pipe_"+str(it))
-            X_vl_current = np.loadtxt("pickle_val_pipe_"+str(it))
+            X_tr_current = np.loadtxt("../input/pickle_train_pipe_"+str(it))
+            X_vl_current = np.loadtxt("../input/pickle_val_pipe_"+str(it))
         it += 1
 
         X_train_meta = np.column_stack((X_train_meta,X_tr_current))
@@ -729,6 +777,9 @@ elif mode == 'MetaTrain':
     create_submission(0.508938, out_df, model, None)
 
 elif mode == 'StackNet':
+    X.fillna(-1,inplace=True)
+    X_test.fillna(-1,inplace=True)
+    
     train_df['xgb_high'] = -1
     train_df['xgb_medium'] = -1
     train_df['xgb_low'] = -1
@@ -750,15 +801,15 @@ elif mode == 'StackNet':
     # full for test set
     X_tr = pipeline.fit_transform(X,y)
     X_ts = pipeline.transform(X_test)
-    preds, model = runXGB(X_tr, y, X_ts, num_rounds=1000)
+    preds, model = runXGB(X_tr, y, X_ts, num_rounds=700)
     preds = pd.DataFrame(preds)
     preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
     X_test = np.column_stack((X_ts.todense(),preds))
 
     print ("Exporting files")
-    np.savetxt("../stacknet/train_stacknet_523752.csv",\
+    np.savetxt("../stacknet/train_stacknet_519664.csv",\
         X_train,delimiter=",",fmt='%.5f')
-    np.savetxt("../stacknet/test_stacknet_523752.csv",\
+    np.savetxt("../stacknet/test_stacknet_519664.csv",\
         X_test,delimiter=",",fmt='%.5f')  
 
 elif mode == 'Train':
