@@ -201,6 +201,8 @@ LB: 0.52800
 [1425]	train-mlogloss:0.329512	test-mlogloss:0.516461 - added mean by price_quant (SEPARATE PIPE)
 [1559]	train-mlogloss:0.324325	test-mlogloss:0.516042 - added mean by price_per_room_quant (SEPARATE PIPE)
 [1422]	train-mlogloss:0.316658	test-mlogloss:0.516445 - new mean transformer with building and manager_id (identical to 0.516039 with OLD)
+[1547]	train-mlogloss:0.300891	test-mlogloss:0.51553 - added mean by manager and price_per_room_quant (LB 0.52702 best single model after zeroed test set)
+[1731]	train-mlogloss:0.330203	test-mlogloss:0.516617 - same but not zeroing nans in train portion of mean_transformer (SWITCH BACK)
 
 #### Second level ensemble
 Four clf on top of first level, no improvement in CV

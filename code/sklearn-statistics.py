@@ -183,7 +183,6 @@ class MeanTargetTransformerNew():
         X[self.name_hig] = np.nan
 
         for (tr_idx, cv_idx) in self.kfold.split(X,y):
-            print(cv_idx)
             X_tr = X.iloc[tr_idx]
             X_cv = X.iloc[cv_idx]
             tmp = X_tr.groupby(self.group+['interest_level']).size().\
@@ -207,7 +206,6 @@ class MeanTargetTransformerNew():
             # fillna full set on index
             for name in self.names:
                 X[name].fillna(res[name+'_'],inplace=True,axis='index')
-            print(self.group,X[X[self.name_low].isnull()].shape[0])
 
         for name in self.names:
             X[name].fillna(0,inplace=True)
@@ -231,6 +229,9 @@ class MeanTargetTransformerNew():
             tmp[name] = tmp[name]/row_sum
 
         Xt = pd.merge(Xt,tmp,on=self.group,how='left')
+
+        for name in self.names:
+            Xt[name].fillna(0,inplace=True)
         return Xt
 
 class MeanTargetTransformerOld():
@@ -597,9 +598,6 @@ for col in columns:
     target_mean_features.append("_".join(col)+'_low')
     target_mean_features.append("_".join(col)+'_med')
     target_mean_features.append("_".join(col)+'_hig')
-    # target_mean_features.append(col+'_low')
-    # target_mean_features.append(col+'_med')
-    # target_mean_features.append(col+'_hig')
 
 # --------------------------------
 # Basic numerical features for neural network
@@ -692,10 +690,10 @@ elif mode == 'Train':
     X_test = pipeline.transform(X_test)
 
     preds, model = runXGB(X_train, y, X_test,\
-        num_rounds=2000,max_depth=6,eta=0.03)
+        num_rounds=1600,max_depth=6,eta=0.03)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.517063, out_df, model, None)
+    create_submission(0.51553, out_df, model, None)
