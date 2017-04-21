@@ -409,8 +409,11 @@ joint["num_description_words"] =\
 # clusters and locations
 ny_lat = 40.785091
 ny_lon = -73.968285
-joint['distance_from_center'] = haversine_np(ny_lon,ny_lat,\
+joint['dist_city_center'] = haversine_np(ny_lon,ny_lat,\
     joint["longitude"],joint["latitude"])
+joint['dist_mass_center'] = np.sqrt((\
+    (joint.latitude - train_df.latitude.median())**2)+\
+    (joint.longitude - train_df.longitude.median())**2)
 
 # Normalize (longitude, latitude) before K-means
 minmax = MinMaxScaler()
@@ -421,14 +424,14 @@ joint["lon_scaled"] = minmax.fit_transform(joint["longitude"].\
 
 # Fit k-means and get labels
 kmeans = KMeans(n_clusters=40)
-kmeans.fit(joint.loc[joint["distance_from_center"]<12,\
+kmeans.fit(joint.loc[joint["dist_city_center"]<12,\
     ['lon_scaled', 'lat_scaled']])
-joint.loc[joint["distance_from_center"]<12,"kmeans40"] = kmeans.labels_
+joint.loc[joint["dist_city_center"]<12,"kmeans40"] = kmeans.labels_
 
 kmeans = KMeans(n_clusters=80)
-kmeans.fit(joint.loc[joint["distance_from_center"]<12,\
+kmeans.fit(joint.loc[joint["dist_city_center"]<12,\
     ['lon_scaled', 'lat_scaled']])
-joint.loc[joint["distance_from_center"]<12,"kmeans80"] = kmeans.labels_
+joint.loc[joint["dist_city_center"]<12,"kmeans80"] = kmeans.labels_
 
 # prices
 joint["price_per_bed"] = joint["price"]/joint["bedrooms"]
@@ -574,6 +577,16 @@ train_df['price_quant'] = np.digitize(train_df['price'], bins)
 test_df['price_quant'] = np.digitize(test_df['price'], bins)
 
 # --------------------------------
+# Distance quantiles
+bins = train_df['dist_city_center'].quantile(np.arange(0.05, 1, 0.05))
+train_df['dist_city_center_q'] = np.digitize(train_df['dist_city_center'], bins)
+test_df['dist_city_center_q'] = np.digitize(test_df['dist_city_center'], bins)
+
+bins = train_df['dist_mass_center'].quantile(np.arange(0.05, 1, 0.05))
+train_df['dist_mass_center_q'] = np.digitize(train_df['dist_mass_center'], bins)
+test_df['dist_mass_center_q'] = np.digitize(test_df['dist_mass_center'], bins)
+
+# --------------------------------
 # Categorical transformer
 columns = ['manager_id','building_id']
 cat_features = []
@@ -585,19 +598,61 @@ for col in columns:
     cat_features.append('w_med_'+col)
 
 # --------------------------------
-# Mean Target transformer - one level
+# Process all fields
 columns = [
-    ['manager_id'],\
-    ['building_id'],\
-    ['manager_id','price_per_room_quant']]
-target_mean_features = []
+    ['manager_id'],
+    ['building_id'],
+    ['building_id','manager_id'],
+    ['manager_id','price_per_room_quant'],
+    ['manager_id','bedrooms'],
+    ['manager_id','dist_mass_center_q'],
+    ['manager_id','kmeans80'],
+    ['building_id','dist_mass_center_q'],
+    ['building_id','price_quant'],
+    ['building_id','bedrooms'],
+    ['building_id','kmeans80']
+    ]
+target_mean_features_1 = []
 for col in columns:
     trf = MeanTargetTransformerNew(col)
     train_df = trf.fit_transform_train(train_df,train_df['interest_level'])
     test_df = trf.fit_transform_test(train_df,test_df)
-    target_mean_features.append("_".join(col)+'_low')
-    target_mean_features.append("_".join(col)+'_med')
-    target_mean_features.append("_".join(col)+'_hig')
+
+columns = [
+    ['manager_id'],
+    ['building_id'],
+    ['manager_id','price_per_room_quant']]
+target_mean_features_1 = []
+for col in columns:
+    target_mean_features_1.append("_".join(col)+'_low')
+    target_mean_features_1.append("_".join(col)+'_med')
+    target_mean_features_1.append("_".join(col)+'_hig')
+
+columns = [
+    ['manager_id','bedrooms'],
+    ['manager_id','dist_mass_center_q'],
+    ['manager_id','kmeans80'],
+    ['manager_id'],
+    ['building_id']]
+target_mean_features_2 = []
+for col in columns:
+    target_mean_features_2.append("_".join(col)+'_low')
+    target_mean_features_2.append("_".join(col)+'_med')
+    target_mean_features_2.append("_".join(col)+'_hig')
+
+columns = [
+    ['building_id','dist_mass_center_q'],
+    ['building_id','price_quant'],
+    ['building_id','bedrooms'],
+    ['building_id','kmeans80'],
+    ['building_id','manager_id'],
+    ['manager_id'],
+    ['building_id']]
+target_mean_features_3 = []
+for col in columns:
+    target_mean_features_3.append("_".join(col)+'_low')
+    target_mean_features_3.append("_".join(col)+'_med')
+    target_mean_features_3.append("_".join(col)+'_hig')
 
 # --------------------------------
 # Basic numerical features for neural network
@@ -612,7 +667,7 @@ Define features
 # define continuous features - will be untouched
 simple_features = [\
     "listing_id",\
-    "bathrooms", "bedrooms", "latitude", "longitude",\
+    "bathrooms","bedrooms","latitude","longitude","dist_mass_center",
     "price","price_per_bed","price_per_room",\
     "price_quant","price_per_room_quant",\
     "num_photos","num_features","num_description_words",\
@@ -644,6 +699,30 @@ Define Pipeline and Ensembles
 '''
 
 # Define pipelines
+pipe0 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_1)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=50)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+# Define pipelines
 pipe1 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
@@ -656,7 +735,7 @@ pipe1 = Pipeline([
             ('debugger', Debugger())
         ])),
         ('target_mean', Pipeline([
-            ('get', ColumnExtractor(target_mean_features)),
+            ('get', ColumnExtractor(target_mean_features_1)),
             ('debugger', Debugger())
         ])),
         ('apartment_features', Pipeline([
@@ -666,7 +745,62 @@ pipe1 = Pipeline([
         ]))
     ]))
 ])
-params1 = {'num_rounds':3000,'max_depth':6,'eta':0.03}
+params1 = {'n_estimators':909,'max_depth':6,'learning_rate':0.03}
+
+# Define pipelines
+pipe2 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_2)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+#sparse: [1084]  train-mlogloss:0.323111 test-mlogloss:0.515197 - pipe2 (LB 0.52985)
+params2 = {'n_estimators':909,'max_depth':6,'learning_rate':0.03}
+
+# Define pipelines
+pipe3 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_3)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+#sparse: [1586] train-mlogloss:0.288519 test-mlogloss:0.51366 - pipe3 (LB 0.52856)
+#dense: [950]   train-mlogloss:0.276347 test-mlogloss:0.513691
+params3 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
+
+
 
 '''
 ===============================
@@ -674,13 +808,17 @@ XGboost Cycle
 ===============================
 '''
 mode = 'Val'
-pipeline = pipe1
+pipeline = pipe2
+seq = [\
+    (pipe1,params1),\
+    (pipe2,params2),\
+    (pipe3,params3)]
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
     
-    X_train = pipeline.fit_transform(X_train,y_train)
-    X_val = pipeline.transform(X_val)
+    X_train = pipeline.fit_transform(X_train,y_train).todense()
+    X_val = pipeline.transform(X_val).todense()
 
     preds, model = runXGB(X_train,y_train,X_val,y_val,\
         num_rounds=3000,max_depth=6,eta=0.03)
@@ -690,10 +828,110 @@ elif mode == 'Train':
     X_test = pipeline.transform(X_test)
 
     preds, model = runXGB(X_train, y, X_test,\
-        num_rounds=1600,max_depth=6,eta=0.03)
+        num_rounds=1586,max_depth=6,eta=0.03)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.51553, out_df, model, None)
+    create_submission(0.51366, out_df, model, None)
+
+elif mode == 'MetaTrain':
+    y_train = y
+    X_train = X
+
+    X_train_meta = np.ones((X_train.shape[0],1))*(-1)
+    X_test_meta = np.ones((X_test.shape[0],1))*(-1)
+
+    it = 1
+    for (pipe,params) in seq:
+        X_train_p = pipe.fit_transform(X_train,y_train).todense()
+        X_test_p = pipe.transform(X_test).todense()
+        clf = [XGBClassifier(
+            objective='multi:softprob',
+            n_estimators=params["n_estimators"],
+            learning_rate = params["learning_rate"],
+            max_depth = params["max_depth"])]
+        ens = EnsembleClassifiersTransformer(clf)
+        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
+        np.savetxt("pickle_train_single_pipe_"+str(it),X_tr_current)
+        np.savetxt("pickle_test_single_pipe_"+str(it),X_ts_current)
+        X_train_meta = np.column_stack((X_train_meta,X_tr_current))
+        X_test_meta = np.column_stack((X_test_meta,X_ts_current))
+        it += 1
+
+    X_train_meta = X_train_meta[:,1:]
+    X_test_meta = X_test_meta[:,1:]
+
+    preds, model = runXGB(X_train_meta,y_train,X_test_meta,num_rounds=100)
+
+    # Prepare Submission
+    out_df = pd.DataFrame(preds)
+    out_df.columns = ["high", "medium", "low"]
+    out_df["listing_id"] = test_df.listing_id.values
+    create_submission(0.1234, out_df, model, None)
+
+elif mode == 'MetaValid':
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
+
+    X_train_meta = np.ones((X_train.shape[0],1))*(-1)
+    X_val_meta = np.ones((X_val.shape[0],1))*(-1)
+
+    for (pipe,params) in seq:
+        X_train_p = pipe.fit_transform(X_train,y_train).todense()
+        X_val_p = pipe.transform(X_val).todense()
+        clf = [XGBClassifier(
+            objective='multi:softprob',
+            n_estimators=params["n_estimators"],
+            learning_rate = params["learning_rate"],
+            max_depth = params["max_depth"])]
+        ens = EnsembleClassifiersTransformer(clf)
+        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
+        X_train_meta = np.column_stack((X_train_meta,X_tr_current))
+        X_val_meta = np.column_stack((X_val_meta,X_vl_current))
+
+    X_train_meta = X_train_meta[:,1:]
+    X_val_meta = X_val_meta[:,1:]
+
+    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
+
+elif mode == 'StackNet':
+    train_df['xgb_high'] = -1
+    train_df['xgb_medium'] = -1
+    train_df['xgb_low'] = -1
+    kfold = StratifiedKFold(5)
+    res = np.ones((X.shape[0],3))*(-1)
+
+    X_train = pipe1.fit_transform(X,y).todense()
+
+    # k-fold for training set
+    for (tr_idx, cv_idx) in kfold.split(X_train,y):
+        X_tr,y_tr = X_train[tr_idx],y[tr_idx]
+        X_cv,y_cv = X_train[cv_idx],y[cv_idx]
+        preds, model = runXGB(X_tr,y_tr,X_cv,y_cv,
+            num_rounds=909,max_depth=6,eta=0.03)
+        res[cv_idx] = preds
+
+    # merging and saving with reduced pipe0
+    X_tr = pipe0.fit_transform(X,y).todense()
+    X_train = np.column_stack((X_tr,res))
+
+    # full for test set
+    X_tr = pipe1.fit_transform(X,y).todense()
+    X_ts = pipe1.transform(X_test).todense()
+    preds, model = runXGB(X_tr, y, X_ts,
+        num_rounds=909,max_depth=6,eta=0.03)
+    preds = pd.DataFrame(preds)
+    preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
+
+    # merging with reduced pipe0
+    X_ts = pipe0.transform(X_test).todense()
+    X_test = np.column_stack((X_ts,preds))
+
+    print ("Exporting files")
+    np.savetxt("../stacknet/train_stacknet_515479.csv",\
+        X_train,delimiter=",",fmt='%.5f')
+    np.savetxt("../stacknet/test_stacknet_515479.csv",\
+        X_test,delimiter=",",fmt='%.5f')

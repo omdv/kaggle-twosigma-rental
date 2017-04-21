@@ -197,12 +197,50 @@ LB: 0.52800
 [1518]	train-mlogloss:0.327771	test-mlogloss:0.516821 - new BEST CV with NN params
 [2999]	train-mlogloss:0.384459	test-mlogloss:0.518427 - with exif (SEPARATE PIPE)
 [1820]	train-mlogloss:0.320246	test-mlogloss:0.516347 - added price and price_per_room quantiles
-[1412]	train-mlogloss:0.332733	test-mlogloss:0.516039 - added building in mean transformer (BEST CV)
+[1412]	train-mlogloss:0.332733	test-mlogloss:0.516039 - added building in mean transformer
 [1425]	train-mlogloss:0.329512	test-mlogloss:0.516461 - added mean by price_quant (SEPARATE PIPE)
 [1559]	train-mlogloss:0.324325	test-mlogloss:0.516042 - added mean by price_per_room_quant (SEPARATE PIPE)
 [1422]	train-mlogloss:0.316658	test-mlogloss:0.516445 - new mean transformer with building and manager_id (identical to 0.516039 with OLD)
-[1547]	train-mlogloss:0.300891	test-mlogloss:0.51553 - added mean by manager and price_per_room_quant (LB 0.52702 best single model after zeroed test set)
-[1731]	train-mlogloss:0.330203	test-mlogloss:0.516617 - same but not zeroing nans in train portion of mean_transformer (SWITCH BACK)
+[1547]	train-mlogloss:0.300891	test-mlogloss:0.51553 - added mean by manager and price_per_room_quant (BEST SINGLE-MODEL LB 0.52702 best single model after zeroed test set)
+[1731]	train-mlogloss:0.330203	test-mlogloss:0.516617 - same but not zeroing nans in train portion of mean_transformer (REMOVE)
+[1441]	train-mlogloss:0.299266	test-mlogloss:0.516432 - added manager+price_quant (SEP PIPELINE)
+[1342]	train-mlogloss:0.30632	test-mlogloss:0.515501 - added manager+bedrooms (SEP PIPELINE)
+[1442]	train-mlogloss:0.29893	test-mlogloss:0.515141 - manager+kmeans80 (SEP PIPELINE)
+[1253]	train-mlogloss:0.306091	test-mlogloss:0.51577 - added dist_mass_center and dist_city_center (REMOVE)
+[1559]	train-mlogloss:0.30734	test-mlogloss:0.51506 - added manager_id+dist_mass_center_q (SEP PIPELINE)
+[1693]	train-mlogloss:0.279047	test-mlogloss:0.513288 - cross mix of 11 parameters in mean transformer (best CV)
+[1373]	train-mlogloss:0.309265	test-mlogloss:0.515135 - repeated building, manager and manager+price_per_room_quant (LB 0.52743)
+[909]	train-mlogloss:0.290929	test-mlogloss:0.515479 - building, manager and manager+price_per_room_quant with dense format
+[1463]	train-mlogloss:0.304401	test-mlogloss:0.516063 - same as above sparse with only 100 apartment features for stacknet
+[1084]	train-mlogloss:0.323111	test-mlogloss:0.515197 - pipe2 (LB 0.52985)
+[1586]	train-mlogloss:0.288519	test-mlogloss:0.51366 - pipe3 (LB 0.52856)
+
+#### Stacking - best single model
+pipe1:
+    ['manager_id'],\
+    ['building_id'],\
+    ['manager_id','price_per_room_quant']]
+[1547]	train-mlogloss:0.300891	test-mlogloss:0.51553
+
+pipe2:
+    ['manager_id','dist_mass_center_q'],
+    ['manager_id','price_quant'],
+    ['manager_id','bedrooms'],
+    ['manager_id','kmeans80']]
+[1574]	train-mlogloss:0.318671	test-mlogloss:0.51968
+
+Three pipes stacking with 1600 estimators
+Fold results (cv error):
+clf  0: 0.5389
+Fold results (cv error):
+clf  0: 0.5575
+Fold results (cv error):
+clf  0: 0.5545
+Fold results (cv error):
+clf  0: 0.5550
+Fold results (cv error):
+clf  0: 0.5584
+[763]	train-mlogloss:0.472375	test-mlogloss:0.515451
 
 #### Second level ensemble
 Four clf on top of first level, no improvement in CV
