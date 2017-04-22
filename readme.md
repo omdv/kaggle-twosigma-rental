@@ -214,6 +214,10 @@ LB: 0.52800
 [1463]	train-mlogloss:0.304401	test-mlogloss:0.516063 - same as above sparse with only 100 apartment features for stacknet
 [1084]	train-mlogloss:0.323111	test-mlogloss:0.515197 - pipe2 (LB 0.52985)
 [1586]	train-mlogloss:0.288519	test-mlogloss:0.51366 - pipe3 (LB 0.52856)
+[1410]	train-mlogloss:0.263855	test-mlogloss:0.512393 - pipe0 (BEST CV)
+[1179]	train-mlogloss:0.280151	test-mlogloss:0.512727 - added dist_city_center, mass_center and passed_days (BEST CV) (LB 0.53019)
+[1288]	train-mlogloss:0.294688	test-mlogloss:0.503187 - pipe1 with img_data (BEST CV)
+[1584]	train-mlogloss:0.26772	test-mlogloss:0.502468 - only day, hour, month
 
 #### Stacking - best single model
 pipe1:

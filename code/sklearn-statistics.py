@@ -459,6 +459,31 @@ sent_joint = pd.concat([sent_train,sent_test])
 joint = pd.merge(joint,sent_joint,how='left',on='listing_id')
 
 # --------------------------------
+# join with "magic" feature
+image_date = pd.read_csv("../input/listing_image_time.csv")
+
+# rename columns so you can join tables later on
+image_date.columns = ["listing_id", "time_stamp"]
+
+# reassign the only one timestamp from April, all others from Oct/Nov
+# [1584]  train-mlogloss:0.26772  test-mlogloss:0.502468
+# only day, hour, month
+image_date.loc[80240,"time_stamp"] = 1478129766 
+image_date["img_date"] = pd.to_datetime(image_date["time_stamp"], unit="s")
+image_date["img_days_passed"] =\
+    (image_date["img_date"].max() - image_date["img_date"]).\
+    astype("timedelta64[D]").astype(int)
+image_date["img_date_month"] = image_date["img_date"].dt.month
+# image_date["img_date_week"] = image_date["img_date"].dt.week
+image_date["img_date_day"] = image_date["img_date"].dt.day
+# image_date["img_date_dayofweek"] = image_date["img_date"].dt.dayofweek
+# image_date["img_date_dayofyear"] = image_date["img_date"].dt.dayofyear
+image_date["img_date_hour"] = image_date["img_date"].dt.hour
+# image_date["img_date_monthBeginMidEnd"] =\
+#     image_date["img_date_day"].apply(lambda x: 1 if x<10 else 2 if x<20 else 3)
+joint = pd.merge(joint, image_date, on="listing_id", how="left")
+
+# --------------------------------
 # Adding counts of listings by keys_to_count
 keys_to_count = ["manager_id","building_id","display_address",
     "kmeans40","kmeans80"]
@@ -607,16 +632,25 @@ columns = [
     ['manager_id','bedrooms'],
     ['manager_id','dist_mass_center_q'],
     ['manager_id','kmeans80'],
+    ['manager_id','bathrooms'],
+    ['manager_id','dist_city_center_q'],
+    ['manager_id','passed_days'],
     ['building_id','dist_mass_center_q'],
-    ['building_id','price_quant'],
+    ['building_id','dist_city_center_q'],
+    ['building_id','price_per_room_quant'],
     ['building_id','bedrooms'],
-    ['building_id','kmeans80']
+    ['building_id','kmeans80'],
+    ['building_id','bathrooms'],
+    ['building_id','passed_days'],
     ]
-target_mean_features_1 = []
+target_mean_features_0 = []
 for col in columns:
     trf = MeanTargetTransformerNew(col)
     train_df = trf.fit_transform_train(train_df,train_df['interest_level'])
     test_df = trf.fit_transform_test(train_df,test_df)
+    target_mean_features_0.append("_".join(col)+'_low')
+    target_mean_features_0.append("_".join(col)+'_med')
+    target_mean_features_0.append("_".join(col)+'_hig')
 
 columns = [
     ['manager_id'],
@@ -682,6 +716,10 @@ sentiment_features = [\
 # numerical from NN kernel for additional pipeline
 nn_features = [i for i in train_df.columns.values if i.startswith('num_')]
 
+# image features
+img_features = [i for i in train_df.columns.values if i.startswith('img_')]
+img_features.remove('img_date')
+
 '''
 ===============================
 Define X & y
@@ -697,9 +735,62 @@ X_test = test_df
 Define Pipeline and Ensembles
 ===============================
 '''
+rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
+gbc = GradientBoostingClassifier(n_estimators=1000)
 
 # Define pipelines
 pipe0 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_0)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+# Define pipelines
+pipe1 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+\
+                img_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_1)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+#sparse: [1373]  train-mlogloss:0.309265 test-mlogloss:0.515135 - pipe1 (LB 0.52743)
+#dense: [909]   train-mlogloss:0.290929 test-mlogloss:0.515479
+
+# Define pipelines
+pipe15 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
             ('get', ColumnExtractor(\
@@ -722,30 +813,10 @@ pipe0 = Pipeline([
     ]))
 ])
 
-# Define pipelines
-pipe1 = Pipeline([
-    ('features', FeatureUnion([
-        ('simple_scaler', Pipeline([
-            ('get', ColumnExtractor(\
-                simple_features+\
-                count_features+\
-                mean_features+\
-                categorical+\
-                nn_features)),
-            ('debugger', Debugger())
-        ])),
-        ('target_mean', Pipeline([
-            ('get', ColumnExtractor(target_mean_features_1)),
-            ('debugger', Debugger())
-        ])),
-        ('apartment_features', Pipeline([
-            ('get', ColumnExtractor("features")),
-            ('transform', CountVectorizer(max_features=346)),
-            ('debugger', Debugger())
-        ]))
-    ]))
-])
 params1 = {'n_estimators':909,'max_depth':6,'learning_rate':0.03}
+xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=909,
+    learning_rate = 0.03,max_depth = 6)
+clf1 = [xgbc1,rfc,gbc]
 
 # Define pipelines
 pipe2 = Pipeline([
@@ -771,7 +842,11 @@ pipe2 = Pipeline([
     ]))
 ])
 #sparse: [1084]  train-mlogloss:0.323111 test-mlogloss:0.515197 - pipe2 (LB 0.52985)
-params2 = {'n_estimators':909,'max_depth':6,'learning_rate':0.03}
+#dense: [950]    train-mlogloss:0.276347 test-mlogloss:0.513691
+params2 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
+xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=950,
+    learning_rate = 0.03,max_depth = 6)
+clf2 = [xgbc2,rfc,gbc]
 
 # Define pipelines
 pipe3 = Pipeline([
@@ -799,7 +874,9 @@ pipe3 = Pipeline([
 #sparse: [1586] train-mlogloss:0.288519 test-mlogloss:0.51366 - pipe3 (LB 0.52856)
 #dense: [950]   train-mlogloss:0.276347 test-mlogloss:0.513691
 params3 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
-
+xgbc3 = XGBClassifier(objective='multi:softprob',n_estimators=950,
+    learning_rate = 0.03,max_depth = 6)
+clf3 = [xgbc3,rfc,gbc]
 
 
 '''
@@ -807,18 +884,18 @@ params3 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
 XGboost Cycle
 ===============================
 '''
-mode = 'Val'
-pipeline = pipe2
+mode = 'Train'
+pipeline = pipe1
 seq = [\
-    (pipe1,params1),\
-    (pipe2,params2),\
-    (pipe3,params3)]
+    (pipe1,clf1),\
+    (pipe2,clf2),\
+    (pipe3,clf3)]
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
     
-    X_train = pipeline.fit_transform(X_train,y_train).todense()
-    X_val = pipeline.transform(X_val).todense()
+    X_train = pipeline.fit_transform(X_train,y_train)
+    X_val = pipeline.transform(X_val)
 
     preds, model = runXGB(X_train,y_train,X_val,y_val,\
         num_rounds=3000,max_depth=6,eta=0.03)
@@ -828,13 +905,13 @@ elif mode == 'Train':
     X_test = pipeline.transform(X_test)
 
     preds, model = runXGB(X_train, y, X_test,\
-        num_rounds=1586,max_depth=6,eta=0.03)
+        num_rounds=1584,max_depth=6,eta=0.03)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.51366, out_df, model, None)
+    create_submission(0.502468, out_df, model, None)
 
 elif mode == 'MetaTrain':
     y_train = y
@@ -844,14 +921,9 @@ elif mode == 'MetaTrain':
     X_test_meta = np.ones((X_test.shape[0],1))*(-1)
 
     it = 1
-    for (pipe,params) in seq:
+    for (pipe,clf) in seq:
         X_train_p = pipe.fit_transform(X_train,y_train).todense()
         X_test_p = pipe.transform(X_test).todense()
-        clf = [XGBClassifier(
-            objective='multi:softprob',
-            n_estimators=params["n_estimators"],
-            learning_rate = params["learning_rate"],
-            max_depth = params["max_depth"])]
         ens = EnsembleClassifiersTransformer(clf)
         X_tr_current = ens.fit_transform_train(X_train_p,y_train)
         X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
@@ -878,14 +950,9 @@ elif mode == 'MetaValid':
     X_train_meta = np.ones((X_train.shape[0],1))*(-1)
     X_val_meta = np.ones((X_val.shape[0],1))*(-1)
 
-    for (pipe,params) in seq:
+    for (pipe,clf) in seq:
         X_train_p = pipe.fit_transform(X_train,y_train).todense()
         X_val_p = pipe.transform(X_val).todense()
-        clf = [XGBClassifier(
-            objective='multi:softprob',
-            n_estimators=params["n_estimators"],
-            learning_rate = params["learning_rate"],
-            max_depth = params["max_depth"])]
         ens = EnsembleClassifiersTransformer(clf)
         X_tr_current = ens.fit_transform_train(X_train_p,y_train)
         X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
@@ -914,8 +981,8 @@ elif mode == 'StackNet':
             num_rounds=909,max_depth=6,eta=0.03)
         res[cv_idx] = preds
 
-    # merging and saving with reduced pipe0
-    X_tr = pipe0.fit_transform(X,y).todense()
+    # merging and saving with reduced pipe15
+    X_tr = pipe15.fit_transform(X,y).todense()
     X_train = np.column_stack((X_tr,res))
 
     # full for test set
@@ -926,9 +993,12 @@ elif mode == 'StackNet':
     preds = pd.DataFrame(preds)
     preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
 
-    # merging with reduced pipe0
-    X_ts = pipe0.transform(X_test).todense()
+    # merging with reduced pipe15
+    X_ts = pipe15.transform(X_test).todense()
     X_test = np.column_stack((X_ts,preds))
+
+    X_train[np.isnan(X_train)]=-1
+    X_test[np.isnan(X_test)]=-1
 
     print ("Exporting files")
     np.savetxt("../stacknet/train_stacknet_515479.csv",\
