@@ -216,8 +216,12 @@ LB: 0.52800
 [1586]	train-mlogloss:0.288519	test-mlogloss:0.51366 - pipe3 (LB 0.52856)
 [1410]	train-mlogloss:0.263855	test-mlogloss:0.512393 - pipe0 (BEST CV)
 [1179]	train-mlogloss:0.280151	test-mlogloss:0.512727 - added dist_city_center, mass_center and passed_days (BEST CV) (LB 0.53019)
-[1288]	train-mlogloss:0.294688	test-mlogloss:0.503187 - pipe1 with img_data (BEST CV)
-[1584]	train-mlogloss:0.26772	test-mlogloss:0.502468 - only day, hour, month
+[1288]	train-mlogloss:0.294688	test-mlogloss:0.503187 - pipe1 with img_data
+[1584]	train-mlogloss:0.26772	test-mlogloss:0.502468 - pipe6 with img_data(day, hour, month) (BEST CV, LB 0.51275)
+[1328]	train-mlogloss:0.283729	test-mlogloss:0.502321 - pipe7 with same (LB 0.51423)
+[1448]	train-mlogloss:0.30309	test-mlogloss:0.505918 - pipe8
+
+
 
 #### Stacking - best single model
 pipe1:
@@ -250,6 +254,33 @@ clf  0: 0.5584
 Four clf on top of first level, no improvement in CV
 [86]	train-mlogloss:0.49731	test-mlogloss:0.507028
 
+#### Final Stacking
+8 pipelines
+xgboost
+pipe 3: [840]	train-mlogloss:0.310354	test-mlogloss:0.533529
+pipe 4: [922]	train-mlogloss:0.294674	test-mlogloss:0.525568
+pipe 5: [864]	train-mlogloss:0.257132	test-mlogloss:0.506677
+pipe 6: [878]	train-mlogloss:0.280826	test-mlogloss:0.503798
+pipe 7: [815]	train-mlogloss:0.288507	test-mlogloss:0.503288
+pipe 8: [872]	train-mlogloss:0.274393	test-mlogloss:0.501187
+
+lgbm (max_depth = -1, leaves = 31)
+pipe 8: [995]	valid_0's multi_logloss: 0.505942 (max_depth = -1, leaves = 31) (BEST)
+pipe 8: [951]	valid_0's multi_logloss: 0.506222 (max_depth = 6, leaves = 31)
+pipe 8: [1054]	valid_0's multi_logloss: 0.506667 (max_depth = 12, leaves = 31)
+pipe 8: [620]	valid_0's multi_logloss: 0.506197 (max_depth = -1, leaves = 50)
+pipe 8: [1637]	valid_0's multi_logloss: 0.505668 (max_depth = -1, leaves = 20)
+pipe 7: [802]	valid_0's multi_logloss: 0.507104
+pipe 6: [943]	valid_0's multi_logloss: 0.508158
+pipe 5: [904]	valid_0's multi_logloss: 0.505904
+pipe 4: [949]	valid_0's multi_logloss: 0.522013
+pipe 3: [743]	valid_0's multi_logloss: 0.537344
+pipe 2: [975]	valid_0's multi_logloss: 0.530801
+
+rfc
+pipe 6: [1000] 0.5464419615
+pipe 6: [800] 0.5485363897
+pipe 6: [1200] 0.547966225968
 
 #### Best params:
 xgbc1 depth=4, n_estim=500

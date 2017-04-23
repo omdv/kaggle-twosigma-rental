@@ -8,10 +8,6 @@ def mlp_features(df_train, df_test, n_min=50, precision=3):
     df_test['num_latitude'] = df_test.latitude.values
     df_train['num_longitude'] = df_train.longitude.values
     df_test['num_longitude'] = df_test.longitude.values
-    x = np.sqrt(((df_train.latitude - df_train.latitude.median())**2) + (df_train.longitude - df_train.longitude.median())**2)
-    df_train['num_dist_from_center'] = x.values
-    x = np.sqrt(((df_test.latitude - df_train.latitude.median())**2) + (df_test.longitude - df_train.longitude.median())**2)
-    df_test['num_dist_from_center'] = x.values
     df_train['pos'] = df_train.longitude.round(precision).astype(str) + '_' + df_train.latitude.round(precision).astype(str)
     df_test['pos'] = df_test.longitude.round(precision).astype(str) + '_' + df_test.latitude.round(precision).astype(str)
     

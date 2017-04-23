@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+import lightgbm as lgb
 import datetime
 from scipy import sparse
 from collections import defaultdict
@@ -28,6 +29,7 @@ from sklearn.naive_bayes import BernoulliNB, MultinomialNB
 from sklearn.svm import SVC
 from sklearn.neural_network import MLPClassifier
 from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 from kernel_mlpclf import mlp_features
 
 np.random.seed(42)
@@ -376,6 +378,41 @@ def runXGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
 
     pred_test_y = model.predict(xgtest)
     return pred_test_y, model
+
+def runLGB(train_X, train_y, test_X, test_y=None, feature_names=None,\
+    seed_val=0, num_rounds=2000, max_depth=6, learning_rate=0.03):
+    params = {
+        'task': 'train',
+        'boosting_type': 'gbdt',
+        'objective': 'multi:softprob',
+        'num_leaves': 31,
+        'learning_rate': learning_rate,
+        'feature_fraction': 0.9,
+        'bagging_fraction': 0.8,
+        'bagging_freq': 5,
+        'verbose': 0,
+        'max_depth': max_depth
+    }
+
+    train_y = train_y.reshape(-1,1)
+    lgb_train = lgb.Dataset(train_X, train_y)
+
+    if test_y is not None:
+        test_y = test_y.reshape(-1,1)
+        lgb_eval = lgb.Dataset(test_X, test_y, reference=lgb_train)
+        lgb_test = lgb.Dataset(test_X)
+        model = lgb.train(params, lgb_train,
+            num_boost_round=num_rounds,\
+            valid_sets=[lgb_eval],
+            early_stopping_rounds=100)
+    else:
+        lgb_test = lgb.Dataset(test_X)
+        model = lgb.train(params,
+            lgb_train,
+            num_boost_round=num_rounds)
+
+    pred_test_y = model.predict(lgb_test)
+    return pred_test_y, model
     
 # misc function for cleaning features
 def clean_features(row,cleaned_features):
@@ -384,6 +421,21 @@ def clean_features(row,cleaned_features):
         if f in cleaned_features:
             res.append("_".join(cleaned_features[f].split(" ")))
     return " ".join(res)
+
+# routine to average resulting probabilities
+def averaging_proba(data):
+    weights = np.ones(len(data))/len(data)
+
+    # define the result array
+    res = np.zeros(data[0].shape[0],\
+        dtype=[('high','f8'),('medium','f8'),('low','f8')])
+
+    for idx,weight in enumerate(weights):
+        res["high"] += data[idx][:,0]*weight
+        res["medium"] += data[idx][:,1]*weight
+
+    res["low"] = 1.0 - res["high"]-res["medium"]
+    return pd.DataFrame(res).values
 
 data_path = "../input/"
 train_file = data_path + "train.json"
@@ -613,9 +665,9 @@ test_df['dist_mass_center_q'] = np.digitize(test_df['dist_mass_center'], bins)
 
 # --------------------------------
 # Categorical transformer
-columns = ['manager_id','building_id']
+all_cat_target_columns = ['manager_id','building_id']
 cat_features = []
-for col in columns:
+for col in all_cat_target_columns:
     ctf = CategoricalTransformer(col)
     train_df = ctf.fit_transform_train(train_df,train_df["interest_level"])
     test_df = ctf.fit_transform_test(train_df,test_df)
@@ -624,7 +676,7 @@ for col in columns:
 
 # --------------------------------
 # Process all fields
-columns = [
+all_mean_target_columns = [
     ['manager_id'],
     ['building_id'],
     ['building_id','manager_id'],
@@ -644,7 +696,7 @@ columns = [
     ['building_id','passed_days'],
     ]
 target_mean_features_0 = []
-for col in columns:
+for col in all_mean_target_columns:
     trf = MeanTargetTransformerNew(col)
     train_df = trf.fit_transform_train(train_df,train_df['interest_level'])
     test_df = trf.fit_transform_test(train_df,test_df)
@@ -676,7 +728,7 @@ for col in columns:
 
 columns = [
     ['building_id','dist_mass_center_q'],
-    ['building_id','price_quant'],
+    ['building_id','price_per_room_quant'],
     ['building_id','bedrooms'],
     ['building_id','kmeans80'],
     ['building_id','manager_id'],
@@ -735,11 +787,118 @@ X_test = test_df
 Define Pipeline and Ensembles
 ===============================
 '''
+xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=1000,
+    learning_rate = 0.03,max_depth = 6,nthread=-1)
+xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=600,
+    learning_rate = 0.03,max_depth = 10,nthread=-1)
 rfc = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
-gbc = GradientBoostingClassifier(n_estimators=1000)
+
+
+
+pipe1 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple features', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+
+                img_features)),
+            ('debugger', Debugger())
+        ])),
+    ]))
+])
+
+clf1 = []
+
+pipe2 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple features', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+
+                img_features)),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+xgb2 = XGBClassifier(objective='multi:softprob',n_estimators=840,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb2 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=975,max_depth=-1,nthread=-1)
+clf2 = [xgb2,lgb2]
+
+pipe3 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple features', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+
+                img_features)),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ])),
+        ('description', Pipeline([
+            ('get', ColumnExtractor("description")),
+            ('transform', CountVectorizer(max_features=400)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+xgb3 = XGBClassifier(objective='multi:softprob',n_estimators=840,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb3 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=743,max_depth=-1,nthread=-1)
+clf3 = [xgb3,lgb3]
+
+pipe4 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple features', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+\
+                img_features+\
+                sentiment_features+\
+                exif_features)),
+            ('debugger', Debugger())
+        ])),
+        ('features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=346)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
+
+xgb4 = XGBClassifier(objective='multi:softprob',n_estimators=942,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb4 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=949,max_depth=-1,nthread=-1)
+clf4 = [xgb4,lgb4]
 
 # Define pipelines
-pipe0 = Pipeline([
+pipe5 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
             ('get', ColumnExtractor(\
@@ -747,7 +906,8 @@ pipe0 = Pipeline([
                 count_features+\
                 mean_features+\
                 categorical+\
-                nn_features)),
+                nn_features+\
+                img_features)),
             ('debugger', Debugger())
         ])),
         ('target_mean', Pipeline([
@@ -762,8 +922,16 @@ pipe0 = Pipeline([
     ]))
 ])
 
-# Define pipelines
-pipe1 = Pipeline([
+xgb5 = XGBClassifier(objective='multi:softprob',n_estimators=864,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb5 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=904,max_depth=-1,nthread=-1)
+clf5 = [xgb5,lgb5]
+
+
+#sparse: [1373]  train-mlogloss:0.309265 test-mlogloss:0.515135 - pipe1 (LB 0.52743)
+#dense: [909]   train-mlogloss:0.290929 test-mlogloss:0.515479
+pipe6 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
             ('get', ColumnExtractor(\
@@ -786,11 +954,17 @@ pipe1 = Pipeline([
         ]))
     ]))
 ])
-#sparse: [1373]  train-mlogloss:0.309265 test-mlogloss:0.515135 - pipe1 (LB 0.52743)
-#dense: [909]   train-mlogloss:0.290929 test-mlogloss:0.515479
 
+xgb6 = XGBClassifier(objective='multi:softprob',n_estimators=878,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb6 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=943,max_depth=-1,nthread=-1)
+clf6 = [xgb6,lgb6]
+
+#sparse: [1084]  train-mlogloss:0.323111 test-mlogloss:0.515197 - pipe2 (LB 0.52985)
+#dense: [950]    train-mlogloss:0.276347 test-mlogloss:0.513691
 # Define pipelines
-pipe15 = Pipeline([
+pipe7 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
             ('get', ColumnExtractor(\
@@ -798,36 +972,8 @@ pipe15 = Pipeline([
                 count_features+\
                 mean_features+\
                 categorical+\
-                nn_features)),
-            ('debugger', Debugger())
-        ])),
-        ('target_mean', Pipeline([
-            ('get', ColumnExtractor(target_mean_features_1)),
-            ('debugger', Debugger())
-        ])),
-        ('apartment_features', Pipeline([
-            ('get', ColumnExtractor("features")),
-            ('transform', CountVectorizer(max_features=50)),
-            ('debugger', Debugger())
-        ]))
-    ]))
-])
-
-params1 = {'n_estimators':909,'max_depth':6,'learning_rate':0.03}
-xgbc1 = XGBClassifier(objective='multi:softprob',n_estimators=909,
-    learning_rate = 0.03,max_depth = 6)
-clf1 = [xgbc1,rfc,gbc]
-
-# Define pipelines
-pipe2 = Pipeline([
-    ('features', FeatureUnion([
-        ('simple_scaler', Pipeline([
-            ('get', ColumnExtractor(\
-                simple_features+\
-                count_features+\
-                mean_features+\
-                categorical+\
-                nn_features)),
+                nn_features+\
+                img_features)),
             ('debugger', Debugger())
         ])),
         ('target_mean', Pipeline([
@@ -841,15 +987,17 @@ pipe2 = Pipeline([
         ]))
     ]))
 ])
-#sparse: [1084]  train-mlogloss:0.323111 test-mlogloss:0.515197 - pipe2 (LB 0.52985)
-#dense: [950]    train-mlogloss:0.276347 test-mlogloss:0.513691
-params2 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
-xgbc2 = XGBClassifier(objective='multi:softprob',n_estimators=950,
-    learning_rate = 0.03,max_depth = 6)
-clf2 = [xgbc2,rfc,gbc]
+
+xgb7 = XGBClassifier(objective='multi:softprob',n_estimators=815,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb7 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=802,max_depth=-1,nthread=-1)
+clf7 = [xgb7,lgb7]
 
 # Define pipelines
-pipe3 = Pipeline([
+#sparse: [1586] train-mlogloss:0.288519 test-mlogloss:0.51366 - pipe3 (LB 0.52856)
+#dense: [950]   train-mlogloss:0.276347 test-mlogloss:0.513691
+pipe8 = Pipeline([
     ('features', FeatureUnion([
         ('simple_scaler', Pipeline([
             ('get', ColumnExtractor(\
@@ -857,7 +1005,8 @@ pipe3 = Pipeline([
                 count_features+\
                 mean_features+\
                 categorical+\
-                nn_features)),
+                nn_features+\
+                img_features)),
             ('debugger', Debugger())
         ])),
         ('target_mean', Pipeline([
@@ -871,12 +1020,35 @@ pipe3 = Pipeline([
         ]))
     ]))
 ])
-#sparse: [1586] train-mlogloss:0.288519 test-mlogloss:0.51366 - pipe3 (LB 0.52856)
-#dense: [950]   train-mlogloss:0.276347 test-mlogloss:0.513691
-params3 = {'n_estimators':950,'max_depth':6,'learning_rate':0.03}
-xgbc3 = XGBClassifier(objective='multi:softprob',n_estimators=950,
-    learning_rate = 0.03,max_depth = 6)
-clf3 = [xgbc3,rfc,gbc]
+xgb8 = XGBClassifier(objective='multi:softprob',n_estimators=872,
+    learning_rate = 0.03,max_depth=6,nthread=-1)
+lgb8 = LGBMClassifier(objective='multi:softprob',num_leaves=31,
+    learning_rate=0.03,n_estimators=995,max_depth=-1,nthread=-1)
+clf8 = [xgb8,lgb8]
+
+pipe9 = Pipeline([
+    ('features', FeatureUnion([
+        ('simple_scaler', Pipeline([
+            ('get', ColumnExtractor(\
+                simple_features+\
+                count_features+\
+                mean_features+\
+                categorical+\
+                nn_features+\
+                img_features)),
+            ('debugger', Debugger())
+        ])),
+        ('target_mean', Pipeline([
+            ('get', ColumnExtractor(target_mean_features_1)),
+            ('debugger', Debugger())
+        ])),
+        ('apartment_features', Pipeline([
+            ('get', ColumnExtractor("features")),
+            ('transform', CountVectorizer(max_features=20)),
+            ('debugger', Debugger())
+        ]))
+    ]))
+])
 
 
 '''
@@ -884,12 +1056,16 @@ clf3 = [xgbc3,rfc,gbc]
 XGboost Cycle
 ===============================
 '''
-mode = 'Train'
-pipeline = pipe1
+mode = 'Val'
+pipeline = pipe8
 seq = [\
-    (pipe1,clf1),\
     (pipe2,clf2),\
-    (pipe3,clf3)]
+    (pipe3,clf3),\
+    (pipe4,clf4),\
+    # (pipe5,clf5),\
+    (pipe6,clf6),\
+    (pipe7,clf7),\
+    (pipe8,clf8)]
 
 if mode == 'Val':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -900,18 +1076,32 @@ if mode == 'Val':
     preds, model = runXGB(X_train,y_train,X_val,y_val,\
         num_rounds=3000,max_depth=6,eta=0.03)
 
+    # gbm = lgb.LGBMClassifier(objective='multi:softprob',
+    #                     num_leaves=31,
+    #                     learning_rate=0.03,
+    #                     n_estimators=3000,
+    #                     max_depth=-1)
+    # gbm.fit(np.array(X_train), y_train,
+    #         eval_set=[(np.array(X_val), y_val)],
+    #         eval_metric='logloss',
+    #         early_stopping_rounds=100)
+
+    # rfc = RandomForestClassifier(n_estimators=1200, n_jobs=-1, verbose=1)
+    # rfc.fit(X_train,y_train)
+    # print(log_loss(y_val,rfc.predict_proba(X_val)))
+
 elif mode == 'Train':
     X_train = pipeline.fit_transform(X,y)
     X_test = pipeline.transform(X_test)
 
     preds, model = runXGB(X_train, y, X_test,\
-        num_rounds=1584,max_depth=6,eta=0.03)
+        num_rounds=1448,max_depth=6,eta=0.03)
 
     # Prepare Submission
     out_df = pd.DataFrame(preds)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.502468, out_df, model, None)
+    create_submission(0.505918, out_df, model, None)
 
 elif mode == 'MetaTrain':
     y_train = y
@@ -920,15 +1110,21 @@ elif mode == 'MetaTrain':
     X_train_meta = np.ones((X_train.shape[0],1))*(-1)
     X_test_meta = np.ones((X_test.shape[0],1))*(-1)
 
-    it = 1
+    it = 2
     for (pipe,clf) in seq:
-        X_train_p = pipe.fit_transform(X_train,y_train).todense()
-        X_test_p = pipe.transform(X_test).todense()
-        ens = EnsembleClassifiersTransformer(clf)
-        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
-        X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
-        np.savetxt("pickle_train_single_pipe_"+str(it),X_tr_current)
-        np.savetxt("pickle_test_single_pipe_"+str(it),X_ts_current)
+        # X_train_p = np.array(pipe.fit_transform(X_train,y_train).todense())
+        # X_test_p = np.array(pipe.transform(X_test).todense())
+        # ens = EnsembleClassifiersTransformer(clf)
+        # X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        # X_ts_current = ens.fit_transform_test(X_train_p,y_train,X_test_p)
+        # print("Saving pipeline: "+str(it))
+        # np.savetxt("stack_train_train_"+str(it),X_tr_current)
+        # np.savetxt("stack_train_test_"+str(it),X_ts_current)
+
+        # read existing files
+        X_tr_current = np.loadtxt("stack_train_train_"+str(it))
+        X_ts_current = np.loadtxt("stack_train_test_"+str(it))
+
         X_train_meta = np.column_stack((X_train_meta,X_tr_current))
         X_test_meta = np.column_stack((X_test_meta,X_ts_current))
         it += 1
@@ -936,13 +1132,44 @@ elif mode == 'MetaTrain':
     X_train_meta = X_train_meta[:,1:]
     X_test_meta = X_test_meta[:,1:]
 
-    preds, model = runXGB(X_train_meta,y_train,X_test_meta,num_rounds=100)
+    # XGBoost
+    # [788]   train-mlogloss:0.427889 test-mlogloss:0.500249
+    preds1,model = runXGB(X_train_meta,y_train,X_test_meta,num_rounds=788)
+
+    # LightGBM
+    # [247]   valid_0's multi_logloss: 0.501586
+    gbm = lgb.LGBMClassifier(objective='multi:softprob',num_leaves=31,
+        learning_rate=0.03,n_estimators=247,max_depth=-1)
+    gbm.fit(np.array(X_train_meta), y_train, eval_metric='logloss')
+    preds2 = gbm.predict_proba(np.array(X_test_meta))
+
+    # Random Forest
+    # 1400 - 0.5116744997477477
+    # 1200 - 0.51452379569495943
+    # rfc = RandomForestClassifier(n_estimators=1400,n_jobs=-1,verbose=1)
+    # rfc.fit(X_train_meta,y_train)
+    # preds3 = rfc.predict_proba(X_test_meta)
+
+    # Simple averaging of 5,6,7,8 pipes
+    to_average = []
+    for i in range (2,9):
+        if i >= 5:
+            to_average.append(X_test_meta[:,(i-2)*3:(i-2)*3+3])
+    preds4 = averaging_proba(to_average)
+
+    # Average over all second-level models
+    to_average = []
+    to_average.append(preds1) #0.50044389840272707
+    to_average.append(preds2) #0.50158642789173802
+    # to_average.append(preds3) #0.5116744997477477
+    to_average.append(preds4) #0.50757870751661049
+    res = averaging_proba(to_average)
 
     # Prepare Submission
-    out_df = pd.DataFrame(preds)
+    out_df = pd.DataFrame(res)
     out_df.columns = ["high", "medium", "low"]
     out_df["listing_id"] = test_df.listing_id.values
-    create_submission(0.1234, out_df, model, None)
+    create_submission(0.49940, out_df, model, None)
 
 elif mode == 'MetaValid':
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.33)
@@ -950,19 +1177,66 @@ elif mode == 'MetaValid':
     X_train_meta = np.ones((X_train.shape[0],1))*(-1)
     X_val_meta = np.ones((X_val.shape[0],1))*(-1)
 
+    it = 2
     for (pipe,clf) in seq:
-        X_train_p = pipe.fit_transform(X_train,y_train).todense()
-        X_val_p = pipe.transform(X_val).todense()
-        ens = EnsembleClassifiersTransformer(clf)
-        X_tr_current = ens.fit_transform_train(X_train_p,y_train)
-        X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
+        # X_train_p = np.array(pipe.fit_transform(X_train,y_train).todense())
+        # X_val_p = np.array(pipe.transform(X_val).todense())
+        # ens = EnsembleClassifiersTransformer(clf)
+        # X_tr_current = ens.fit_transform_train(X_train_p,y_train)
+        # X_vl_current = ens.fit_transform_test(X_train_p,y_train,X_val_p)
+        # print("Saving pipeline: "+str(it))
+        # np.savetxt("stack_val_train_"+str(it),X_tr_current)
+        # np.savetxt("stack_val_val_"+str(it),X_vl_current)
+
+        # read existing files
+        X_tr_current = np.loadtxt("stack_val_train_"+str(it))
+        X_vl_current = np.loadtxt("stack_val_val_"+str(it))
+
         X_train_meta = np.column_stack((X_train_meta,X_tr_current))
         X_val_meta = np.column_stack((X_val_meta,X_vl_current))
+        it += 1
 
     X_train_meta = X_train_meta[:,1:]
     X_val_meta = X_val_meta[:,1:]
 
-    preds, model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
+    # XGBoost
+    # [788]   train-mlogloss:0.427889 test-mlogloss:0.500249
+    preds1,model = runXGB(X_train_meta,y_train,X_val_meta,y_val,num_rounds=2000)
+
+    # LightGBM
+    # [247]   valid_0's multi_logloss: 0.501586
+    gbm = lgb.LGBMClassifier(objective='multi:softprob',num_leaves=31,
+        learning_rate=0.03,n_estimators=3000,max_depth=-1)
+    gbm.fit(np.array(X_train_meta), y_train,
+        eval_set=[(np.array(X_val_meta), y_val)], eval_metric='logloss',
+        early_stopping_rounds=100)
+    preds2 = gbm.predict_proba(np.array(X_val_meta))
+
+    # Random Forest
+    # 1400 - 0.5116744997477477
+    # 1200 - 0.51452379569495943
+    # rfc = RandomForestClassifier(n_estimators=1400,n_jobs=-1,verbose=1)
+    # rfc.fit(X_train_meta,y_train)
+    # preds3 = rfc.predict_proba(X_val_meta)
+
+    # Simple averaging of 5,6,7,8 pipes
+    to_average = []
+    for i in range (2,9):
+        if i >= 5:
+            to_average.append(X_val_meta[:,(i-2)*3:(i-2)*3+3])
+    preds4 = averaging_proba(to_average)
+
+    # Average over all second-level models
+    to_average = []
+    to_average.append(preds1) #0.50044389840272707
+    to_average.append(preds2) #0.50158642789173802
+    # to_average.append(preds3) #0.5116744997477477
+    to_average.append(preds4) #0.50757870751661049
+    res = averaging_proba(to_average)
+    print("Total CV: {:0.5f}".format(log_loss(y_val,res)))
+    # Total CV: 0.49940 with three
+    # Total CV: 0.49917 with four
+
 
 elif mode == 'StackNet':
     train_df['xgb_high'] = -1
@@ -971,37 +1245,43 @@ elif mode == 'StackNet':
     kfold = StratifiedKFold(5)
     res = np.ones((X.shape[0],3))*(-1)
 
-    X_train = pipe1.fit_transform(X,y).todense()
+    gbm = lgb.LGBMClassifier(objective='multi:softprob',num_leaves=31,
+        learning_rate=0.03,n_estimators=943,max_depth=-1)
+
+    X_train = np.array(pipe6.fit_transform(X,y).todense())
 
     # k-fold for training set
     for (tr_idx, cv_idx) in kfold.split(X_train,y):
         X_tr,y_tr = X_train[tr_idx],y[tr_idx]
         X_cv,y_cv = X_train[cv_idx],y[cv_idx]
-        preds, model = runXGB(X_tr,y_tr,X_cv,y_cv,
-            num_rounds=909,max_depth=6,eta=0.03)
-        res[cv_idx] = preds
+        # preds, model = runXGB(X_tr,y_tr,X_cv,y_cv,
+        #     num_rounds=878,max_depth=6,eta=0.03)
+        print("Fitting a fold")
+        gbm.fit(X_tr,y_tr,eval_metric='logloss')
+        res[cv_idx] = gbm.predict_proba(X_cv)
 
-    # merging and saving with reduced pipe15
-    X_tr = pipe15.fit_transform(X,y).todense()
+    # merging and saving with reduced pipeline
+    X_tr = np.array(pipe9.fit_transform(X,y).todense())
     X_train = np.column_stack((X_tr,res))
 
     # full for test set
-    X_tr = pipe1.fit_transform(X,y).todense()
-    X_ts = pipe1.transform(X_test).todense()
-    preds, model = runXGB(X_tr, y, X_ts,
-        num_rounds=909,max_depth=6,eta=0.03)
-    preds = pd.DataFrame(preds)
+    X_tr = np.array(pipe6.fit_transform(X,y).todense())
+    X_ts = np.array(pipe6.transform(X_test).todense())
+    # preds, model = runXGB(X_tr, y, X_ts,
+    #     num_rounds=878,max_depth=6,eta=0.03)
+    gbm.fit(X_tr,y)
+    preds = pd.DataFrame(gbm.predict_proba(X_ts))
     preds.columns = ["xgb_high", "xgb_medium", "xgb_low"]
 
-    # merging with reduced pipe15
-    X_ts = pipe15.transform(X_test).todense()
+    # merging with reduced pipeline
+    X_ts = np.array(pipe9.transform(X_test).todense())
     X_test = np.column_stack((X_ts,preds))
 
     X_train[np.isnan(X_train)]=-1
     X_test[np.isnan(X_test)]=-1
 
     print ("Exporting files")
-    np.savetxt("../stacknet/train_stacknet_515479.csv",\
+    np.savetxt("../stacknet/train_stacknet_508158.csv",\
         X_train,delimiter=",",fmt='%.5f')
-    np.savetxt("../stacknet/test_stacknet_515479.csv",\
+    np.savetxt("../stacknet/test_stacknet_508158.csv",\
         X_test,delimiter=",",fmt='%.5f')
