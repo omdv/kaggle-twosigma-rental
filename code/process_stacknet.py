@@ -11,10 +11,14 @@ import pandas as pd
 
 # Averaging with other scripts
 files = [\
-	"../output/submit_0.5059_2017-04-23-1425.csv",#pipe8
-	"../output/submit_0.5023_2017-04-23-1407.csv",#pipe7
-	"../output/submit_0.5025_2017-04-21-2111.csv",#pipe6
-	"../output/submit_0.4994_2017-04-23-1335.csv",#stacked 8 pipes
+	"../output/submit_0.5075_2017-04-24-1821.csv",#pipe6 with meta
+	"../output/submit_average_04232017.csv"#best averaged on 23
+	# "../output/submit_0.5000_2017-04-24-2314.csv",#pipe8 with meta
+	# "../output/submit_0.5044_2017-04-24-2239.csv",#pipe7 with meta
+	# "../output/submit_0.5059_2017-04-23-1425.csv",#pipe8
+	# "../output/submit_0.5023_2017-04-23-1407.csv",#pipe7
+	# "../output/submit_0.5025_2017-04-21-2111.csv",#pipe6
+	# "../output/submit_0.4994_2017-04-23-1335.csv",#stacked 8 pipes
 	]
 weights = np.ones(len(files))/len(files)
 
@@ -40,4 +44,4 @@ res["listing_id"] = data[0]["listing_id"]
 res = pd.DataFrame(res)
 
 res["listing_id"]=res["listing_id"].astype("int")
-res.to_csv("../output/submit_average_04232017.csv", index=False)
+res.to_csv("../output/submit_average_04242017.csv", index=False)
