@@ -220,7 +220,20 @@ LB: 0.52800
 [1584]	train-mlogloss:0.26772	test-mlogloss:0.502468 - pipe6 with img_data(day, hour, month) (BEST CV, LB 0.51275)
 [1328]	train-mlogloss:0.283729	test-mlogloss:0.502321 - pipe7 with same (LB 0.51423)
 [1448]	train-mlogloss:0.30309	test-mlogloss:0.505918 - pipe8
-
+[603]	train-mlogloss:0.31071	test-mlogloss:0.530282 - pipe6 
+[953]	train-mlogloss:0.285217	test-mlogloss:0.50971 - dense pipe6 with new numerical features
+[860]	train-mlogloss:0.297881	test-mlogloss:0.509088 - sparse pipe6 with new numerical features (20% CV)
+[908]	train-mlogloss:0.291526	test-mlogloss:0.508328 - sparse pipe6 with old features (20% CV)
+[963]	train-mlogloss:0.281361	test-mlogloss:0.510269 - sparse pipe6 with only cap letters
+[1030]	train-mlogloss:0.269957	test-mlogloss:0.508093 - sparse pipe6 with manager_id+building_id
+[880]	train-mlogloss:0.292271	test-mlogloss:0.508411 - added price_quant
+[923]	train-mlogloss:0.290436	test-mlogloss:0.510132 - 0.025 in quants
+[782]	train-mlogloss:0.313256	test-mlogloss:0.511976 - 0.1 in quants
+[1822]	train-mlogloss:0.289718	test-mlogloss:0.509001 - sparse pipe6 with 0.015 eta
+[1632]	train-mlogloss:0.314329	test-mlogloss:0.508074 - max_depth=5,eta=0.025 with dist_city_center_q
+[1439]	train-mlogloss:0.334425	test-mlogloss:0.509569 - same without dist_city_center_q
+[1719]	train-mlogloss:0.304406	test-mlogloss:0.506357 - same with buildin_id+manager_id
+[1603]	train-mlogloss:0.316485	test-mlogloss:0.506921 - dense above
 
 
 #### Stacking - best single model
@@ -281,6 +294,12 @@ rfc
 pipe 6: [1000] 0.5464419615
 pipe 6: [800] 0.5485363897
 pipe 6: [1200] 0.547966225968
+
+#### XGBOOST with meta-feature
+pipe 6: [1345]	train-mlogloss:0.283956	test-mlogloss:0.507502
+pipe 6: [1041]	train-mlogloss:0.307376	test-mlogloss:0.509017
+pipe 7: [814]	train-mlogloss:0.283525	test-mlogloss:0.504385
+pipe 8
 
 #### Best params:
 xgbc1 depth=4, n_estim=500
